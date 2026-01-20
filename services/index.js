@@ -1,6 +1,6 @@
 // services/index.js
 const PurchaseService = require('./purchaseService');
-const TestSeriesAccessService = require('./testSeriesAccessService');
+const TestSeriesAccessService = require('./TestSeriesAccessService');
 
 module.exports = {
   PurchaseService,
