@@ -1,68 +1,81 @@
+// services/testSeriesAccessService.js
+const TestSeriesPurchase = require('../src/models/TestSeries/TestSeriesPurchase');
 const Purchase = require('../src/models/Purchase/Purchase');
 
 class TestSeriesAccessService {
-  /**
-   * Check if user has access to a test series
-   * @param {string} userId - User ID
-   * @param {string} testSeriesId - Test series ID
-   * @returns {Promise<boolean>} - Whether user has access
-   */
+  // Check if user has access to a test series
   static async hasAccess(userId, testSeriesId) {
-    if (!userId || !testSeriesId) {
-      return false;
-    }
-
     try {
+      // Check newer Purchase model first (preferred)
       const purchase = await Purchase.findOne({
         user: userId,
-        status: 'completed',
         'items.itemType': 'test_series',
         'items.itemId': testSeriesId,
-        expiryDate: { $gt: new Date() } // Check if not expired
+        status: 'completed',
+        expiryDate: { $gt: new Date() }
       });
 
-      return !!purchase;
+      if (purchase) {
+        return {
+          hasAccess: true,
+          isValid: true,
+          purchase: purchase
+        };
+      }
+
+      // Fallback to legacy TestSeriesPurchase model
+      const legacyPurchase = await TestSeriesPurchase.findOne({
+        user: userId,
+        testSeries: testSeriesId,
+        status: 'completed',
+        expiryDate: { $gt: new Date() }
+      });
+
+      return {
+        hasAccess: !!legacyPurchase,
+        isValid: !!legacyPurchase,
+        purchase: legacyPurchase
+      };
     } catch (error) {
       console.error('Error checking test series access:', error);
-      return false;
+      return {
+        hasAccess: false,
+        isValid: false,
+        purchase: null,
+        error: error.message
+      };
     }
   }
 
-  /**
-   * Get access information for a test series
-   * @param {string} userId - User ID
-   * @param {string} testSeriesId - Test series ID
-   * @returns {Promise<Object>} - Access information
-   */
-  static async getAccessInfo(userId, testSeriesId) {
-    if (!userId || !testSeriesId) {
-      return { hasAccess: false, isValid: false, expiryDate: null };
-    }
-
+  // Get comprehensive access context for test series
+  static async getAccessContext(userId, testSeriesId) {
     try {
-      const purchase = await Purchase.findOne({
-        user: userId,
-        status: 'completed',
-        'items.itemType': 'test_series',
-        'items.itemId': testSeriesId
-      });
-
-      if (!purchase) {
-        return { hasAccess: false, isValid: false, expiryDate: null };
+      if (!userId || !testSeriesId) {
+        return {
+          hasAccess: false,
+          isValid: false,
+          purchase: null,
+          expiryDate: null
+        };
       }
 
-      const now = new Date();
-      const isValid = now <= purchase.expiryDate;
-
+      const access = await this.hasAccess(userId, testSeriesId);
+      
       return {
-        hasAccess: true,
-        isValid,
-        expiryDate: purchase.expiryDate,
-        purchaseId: purchase._id
+        hasAccess: access.hasAccess,
+        isValid: access.isValid,
+        purchase: access.purchase,
+        expiryDate: access.purchase?.expiryDate || null
       };
     } catch (error) {
-      console.error('Error getting test series access info:', error);
-      return { hasAccess: false, isValid: false, expiryDate: null };
+      console.error('Error getting test series access context:', error);
+      return {
+        hasAccess: false,
+        isValid: false,
+        purchase: null,
+        expiryDate: null,
+        error: error.message
+      };
     }
   }
 }
