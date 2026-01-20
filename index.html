@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Razorpay Integration</title>
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            border: 1px solid #ddd;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 0;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        pre {
+            background-color: #f5f5f5;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        .token-section {
+            background-color: #f0f8ff;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        .error {
+            color: red;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Razorpay Test Integration</h1>
+    
+    <div class="token-section">
+        <h3>Authentication</h3>
+        <div class="form-group">
+            <label for="jwtToken">JWT Token:</label>
+            <input type="text" id="jwtToken" placeholder="Enter your JWT token" style="width: 100%;">
+            <small>Get this token after logging into the application</small>
+        </div>
+        <div class="form-group">
+            <label for="apiBaseUrl">API Base URL:</label>
+            <input type="text" id="apiBaseUrl" placeholder="Enter API base URL" value="http://localhost:3000/api/v1" style="width: 100%;">
+            <small>Default: http://localhost:3000/api/v1</small>
+        </div>
+        <button id="saveTokenBtn">Save Token</button>
+        <div id="tokenStatus" class="error"></div>
+    </div>
+    
+    <div class="container">
+        <h2>Step 1: Create Order</h2>
+
+        <div style="margin-bottom: 15px;">
+            <label><strong>Select Product Type:</strong></label>
+            <div>
+                <label style="margin-right: 15px;">
+                    <input type="radio" name="itemType" value="test_series" checked> Test Series
+                </label>
+                <label>
+                    <input type="radio" name="itemType" value="online_course"> Online Course
+                </label>
+            </div>
+        </div>
+
+        <div id="testSeriesFields">
+            <div class="form-group">
+                <label for="testSeriesId">Test Series ID:</label>
+                <input type="text" id="testSeriesId" placeholder="Enter test series ID">
+            </div>
+        </div>
+
+        <div id="courseFields" style="display:none;">
+            <div class="form-group">
+                <label for="courseId">Course ID:</label>
+                <input type="text" id="courseId" placeholder="Enter course ID">
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="couponCode">Coupon Code (optional):</label>
+            <input type="text" id="couponCode" placeholder="Enter coupon code">
+        </div>
+
+        <button id="createOrderBtn">Create Order</button>
+        <button id="viewCoursesBtn" style="background-color: #2196F3; margin-left: 10px;">View All Courses</button>
+        
+        <div id="orderDetails" style="display: none; margin-top: 20px;">
+            <h3>Order Created Successfully!</h3>
+            <pre id="orderResponse"></pre>
+        </div>
+    </div>
+
+    <div class="container" id="paymentSection" style="display: none;">
+        <h2>Step 2: Make Payment</h2>
+        <button id="payNowBtn">Pay Now</button>
+        <div id="paymentResponse" style="margin-top: 20px;"></div>
+    </div>
+
+    <div class="container" id="verificationSection" style="display: none;">
+        <h2>Step 3: Verify Payment</h2>
+        <div id="verificationResponse"></div>
+    </div>
+
+    <div class="container" id="courseAccessSection" style="display: none;">
+        <h2>Step 4: Test Course Access</h2>
+        <div class="form-group">
+            <label for="accessCourseId">Course ID to Test Access:</label>
+            <input type="text" id="accessCourseId" placeholder="Enter course ID">
+        </div>
+        <div class="form-group">
+            <label for="accessClassId">Class ID to Test Access:</label>
+            <input type="text" id="accessClassId" placeholder="Enter class ID">
+        </div>
+        <button id="testAccessBtn">Test Course Access</button>
+        <div id="accessResponse" style="margin-top: 20px;"></div>
+    </div>
+
+    <script>
+        let orderData = null;
+        let token = localStorage.getItem('jwtToken') || '';
+        let apiBaseUrl = localStorage.getItem('apiBaseUrl') || 'http://localhost:3000/api/v1'; // Updated to match your backend
+        
+        // Update API base URL from input field
+        function updateApiBaseUrl() {
+            const baseUrlInput = document.getElementById('apiBaseUrl');
+            if (baseUrlInput && baseUrlInput.value.trim()) {
+                apiBaseUrl = baseUrlInput.value.trim();
+                localStorage.setItem('apiBaseUrl', apiBaseUrl);
+            }
+        }
+        
+        // Initialize with stored values
+        window.addEventListener('load', () => {
+            const baseUrlInput = document.getElementById('apiBaseUrl');
+            if (localStorage.getItem('apiBaseUrl')) {
+                baseUrlInput.value = localStorage.getItem('apiBaseUrl');
+            }
+        });
+
+        // Initialize token input if exists
+        document.addEventListener('DOMContentLoaded', () => {
+            const tokenInput = document.getElementById('jwtToken');
+            if (token) {
+                tokenInput.value = token;
+                document.getElementById('tokenStatus').textContent = 'Token loaded from storage';
+                document.getElementById('tokenStatus').style.color = 'green';
+            }
+
+            // Save token button handler
+            document.getElementById('saveTokenBtn').addEventListener('click', () => {
+                const newToken = tokenInput.value.trim();
+                if (!newToken) {
+                    document.getElementById('tokenStatus').textContent = 'Token cannot be empty';
+                    document.getElementById('tokenStatus').style.color = 'red';
+                    return;
+                }
+                token = newToken;
+                localStorage.setItem('jwtToken', token);
+                
+                // Also update API base URL
+                updateApiBaseUrl();
+                
+                document.getElementById('tokenStatus').textContent = 'Token saved successfully!';
+                document.getElementById('tokenStatus').style.color = 'green';
+                
+                // Enable create order button
+                document.getElementById('createOrderBtn').disabled = false;
+            });
+        });
+
+        // View all courses
+        document.getElementById('viewCoursesBtn').addEventListener('click', async () => {
+            if (!token) {
+                document.getElementById('tokenStatus').textContent = 'Please enter and save a valid JWT token first';
+                document.getElementById('tokenStatus').style.color = 'red';
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${apiBaseUrl}/users/courses`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                
+                if (response.status === 401) {
+                    localStorage.removeItem('jwtToken');
+                    document.getElementById('tokenStatus').textContent = 'Session expired. Please enter a new token.';
+                    document.getElementById('tokenStatus').style.color = 'red';
+                    return;
+                }
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    const coursesContainer = document.createElement('div');
+                    coursesContainer.id = 'coursesList';
+                    coursesContainer.style.marginTop = '20px';
+                    
+                    if (data.data && Array.isArray(data.data) && data.data.length > 0) {
+                        coursesContainer.innerHTML = `
+                            <h3>Available Courses (${data.data.length}):</h3>
+                            <div style="max-height: 400px; overflow-y: auto;">
+                                ${data.data.map(course => `
+                                    <div style="border: 1px solid #ddd; margin: 10px 0; padding: 15px; border-radius: 5px;">
+                                        <h4>${course.title || course.name || 'Untitled Course'}</h4>
+                                        <p><strong>ID:</strong> ${course._id}</p>
+                                        <p><strong>Type:</strong> ${course.contentType || 'N/A'}</p>
+                                        <p><strong>Access Type:</strong> ${course.accessType || 'N/A'}</p>
+                                        <p><strong>Price:</strong> ₹${course.discountPrice || course.originalPrice || '0'}</p>
+                                        <p><strong>Classes:</strong> ${course.classes ? course.classes.length : 0}</p>
+                                        <p><strong>Description:</strong> ${course.description || 'No description'}</p>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        `;
+                    } else {
+                        coursesContainer.innerHTML = '<h3>No courses available</h3>';
+                    }
+                    
+                    // Remove existing courses list if present
+                    const existingList = document.getElementById('coursesList');
+                    if (existingList) existingList.remove();
+                    
+                    document.querySelector('.container').appendChild(coursesContainer);
+                } else {
+                    alert('Failed to fetch courses: ' + (data.message || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Error fetching courses:', error);
+                alert('Error fetching courses. Check console for details.');
+            }
+        });
+
+        // Create Order
+        // Toggle fields based on product type
+        document.querySelectorAll('input[name="itemType"]').forEach(r => {
+            r.addEventListener('change', () => {
+                const val = r.value;
+                document.getElementById('testSeriesFields').style.display = (val === 'test_series') ? 'block' : 'none';
+                document.getElementById('courseFields').style.display = (val === 'online_course') ? 'block' : 'none';
+            });
+        });
+
+        document.getElementById('createOrderBtn').addEventListener('click', async () => {
+            if (!token) {
+                document.getElementById('tokenStatus').textContent = 'Please enter and save a valid JWT token first';
+                document.getElementById('tokenStatus').style.color = 'red';
+                return;
+            }
+
+            const selectedType = document.querySelector('input[name="itemType"]:checked').value;
+            const testSeriesId = document.getElementById('testSeriesId').value.trim();
+            const courseId = document.getElementById('courseId').value.trim();
+            const couponCode = document.getElementById('couponCode').value.trim();
+
+            // Validate required fields
+            if (selectedType === 'test_series' && !testSeriesId) {
+                alert('Please enter a test series ID');
+                return;
+            }
+            if (selectedType === 'online_course' && !courseId) {
+                alert('Please enter a course ID');
+                return;
+            }
+
+            try {
+                // Use different endpoints based on item type
+                let endpoint, payload;
+                if (selectedType === 'online_course') {
+                    endpoint = `${apiBaseUrl}/payment/courses/create-order`;
+                    payload = { courseId, couponCode: couponCode || undefined };
+                } else {
+                    endpoint = `${apiBaseUrl}/payment/create-order`;
+                    const items = [{ itemType: 'test_series', itemId: testSeriesId }];
+                    payload = { items, couponCode: couponCode || undefined };
+                }
+
+                console.log('Making request to:', endpoint);
+                console.log('Payload:', payload);
+
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                console.log('Response status:', response.status);
+
+                if (response.status === 401) {
+                    localStorage.removeItem('jwtToken');
+                    document.getElementById('tokenStatus').textContent = 'Session expired. Please enter a new token.';
+                    document.getElementById('tokenStatus').style.color = 'red';
+                    return;
+                }
+
+                // Check if response is JSON or HTML
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    const textResponse = await response.text();
+                    console.error('Non-JSON response:', textResponse);
+                    alert('Server returned an unexpected response. Please check the console for details.');
+                    return;
+                }
+
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    orderData = data.order || data.data; // Handle both response formats
+                    document.getElementById('orderResponse').textContent = JSON.stringify(orderData, null, 2);
+                    document.getElementById('orderDetails').style.display = 'block';
+                    document.getElementById('paymentSection').style.display = 'block';
+                    document.getElementById('paymentSection').scrollIntoView({ behavior: 'smooth' });
+                } else {
+                    console.error('API Error:', data);
+                    alert('Failed to create order: ' + (data.message || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Error creating order:', error);
+                alert('Error creating order. Check console for details. Error: ' + error.message);
+            }
+        });
+
+        // Handle Payment
+        document.getElementById('payNowBtn').addEventListener('click', () => {
+            if (!orderData) {
+                alert('Please create an order first');
+                return;
+            }
+
+            if (!token) {
+                document.getElementById('tokenStatus').textContent = 'Please enter and save a valid JWT token first';
+                document.getElementById('tokenStatus').style.color = 'red';
+                return;
+            }
+
+            // Updated to handle the correct response format from your API
+            const orderId = orderData.orderId || orderData.id;
+            const amount = orderData.amountInPaise || orderData.amount * 100; // Convert to paise if needed
+            const currency = orderData.currency || 'INR';
+
+            const options = {
+                key: "rzp_test_RPLRzNCjuNmGdU", // Enter your Razorpay key here
+                amount: amount,
+                currency: currency,
+                name: orderData.name || "Brain Buzz",
+                description: orderData.description || "Test Series or Online Course Purchase",
+                order_id: orderId,
+                handler: async function (response) {
+                    const paymentResponse = document.getElementById('paymentResponse');
+                    paymentResponse.innerHTML = `
+                        <h3>Payment Successful!</h3>
+                        <p>Payment ID: ${response.razorpay_payment_id}</p>
+                        <p>Order ID: ${response.razorpay_order_id}</p>
+                        <p>Signature: ${response.razorpay_signature}</p>
+                        <p>Verifying payment...</p>
+                    `;
+
+                    try {
+                        // Use different verification endpoints based on the original creation endpoint
+                        const selectedType = document.querySelector('input[name="itemType"]:checked').value;
+                        let verifyEndpoint;
+                        if (selectedType === 'online_course') {
+                            verifyEndpoint = `${apiBaseUrl}/payment/courses/verify`;
+                        } else {
+                            verifyEndpoint = `${apiBaseUrl}/payment/verify`;
+                        }
+
+                        // Send the exact parameters that the backend expects
+                        const verifyResponse = await fetch(verifyEndpoint, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${token}`
+                            },
+                            body: JSON.stringify({
+                                razorpay_order_id: response.razorpay_order_id,
+                                razorpay_payment_id: response.razorpay_payment_id,
+                                razorpay_signature: response.razorpay_signature
+                            })
+                        });
+
+                        if (verifyResponse.status === 401) {
+                            localStorage.removeItem('jwtToken');
+                            document.getElementById('tokenStatus').textContent = 'Session expired. Please enter a new token.';
+                            document.getElementById('tokenStatus').style.color = 'red';
+                            return;
+                        }
+
+                        const verifyData = await verifyResponse.json();
+                        const verificationSection = document.getElementById('verificationSection');
+                        const verificationResponse = document.getElementById('verificationResponse');
+                        
+                        if (verifyData.success) {
+                            verificationResponse.innerHTML = `
+                                <div style="color: green;">
+                                    <h3>Payment Verified Successfully!</h3>
+                                    <p>Order ID: ${verifyData.data?.orderId || verifyData.orderId}</p>
+                                    <p>Payment ID: ${verifyData.data?.paymentId || verifyData.paymentId}</p>
+                                    <p>You now have access to the purchased item.</p>
+                                </div>
+                            `;
+                        } else {
+                            verificationResponse.innerHTML = `
+                                <div style="color: red;">
+                                    <h3>Verification Failed</h3>
+                                    <p>${verifyData.message || 'Unknown error'}</p>
+                                </div>
+                            `;
+                        }
+                        verificationSection.style.display = 'block';
+                        verificationSection.scrollIntoView({ behavior: 'smooth' });
+                        
+                        // Show course access section after successful payment verification
+                        if (verifyData.success) {
+                            document.getElementById('courseAccessSection').style.display = 'block';
+                            // Pre-fill course ID if it was a course purchase
+                            if (selectedType === 'online_course' && courseId) {
+                                document.getElementById('accessCourseId').value = courseId;
+                            }
+                        }
+                    } catch (error) {
+                        console.error('Error verifying payment:', error);
+                        document.getElementById('verificationResponse').innerHTML = `
+                            <div style="color: red;">
+                                <h3>Error verifying payment</h3>
+                                <p>Check console for details</p>
+                            </div>
+                        `;
+                        document.getElementById('verificationSection').style.display = 'block';
+                    }
+                },
+                prefill: {
+                    name: "Test User",
+                    email: "test@example.com",
+                    contact: "9999999999"
+                },
+                notes: {
+                    address: "Test Address"
+                },
+                theme: {
+                    color: "#4CAF50"
+                }
+            };
+
+            const rzp = new Razorpay(options);
+            rzp.on('payment.failed', function (response) {
+                document.getElementById('paymentResponse').innerHTML = `
+                    <div style="color: red;">
+                        <h3>Payment Failed</h3>
+                        <p>Error: ${response.error.description || 'Unknown error'}</p>
+                        <p>Code: ${response.error.code || 'N/A'}</p>
+                    </div>
+                `;
+            });
+
+            rzp.open();
+        });
+        
+        // Test Course Access
+        document.getElementById('testAccessBtn').addEventListener('click', async () => {
+            const accessCourseId = document.getElementById('accessCourseId').value.trim();
+            const accessClassId = document.getElementById('accessClassId').value.trim();
+            
+            if (!accessCourseId) {
+                alert('Please enter a course ID');
+                return;
+            }
+            
+            const accessResponse = document.getElementById('accessResponse');
+            accessResponse.innerHTML = '<p>Testing course access...</p>';
+            
+            try {
+                let endpoint;
+                if (accessClassId) {
+                    endpoint = `${apiBaseUrl}/users/courses/${accessCourseId}/classes/${accessClassId}`;
+                } else {
+                    endpoint = `${apiBaseUrl}/users/courses/${accessCourseId}`;
+                }
+                
+                const response = await fetch(endpoint, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    accessResponse.innerHTML = `
+                        <div style="color: green;">
+                            <h3>Access Test Successful!</h3>
+                            <pre>${JSON.stringify(data, null, 2)}</pre>
+                        </div>
+                    `;
+                } else {
+                    accessResponse.innerHTML = `
+                        <div style="color: orange;">
+                            <h3>Access Test Result:</h3>
+                            <p>Status: ${response.status}</p>
+                            <pre>${JSON.stringify(data, null, 2)}</pre>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('Error testing access:', error);
+                accessResponse.innerHTML = `
+                    <div style="color: red;">
+                        <h3>Error testing access</h3>
+                        <p>${error.message}</p>
+                    </div>
+                `;
+            }
+        });
+    </script>
+</body>
+</html>
