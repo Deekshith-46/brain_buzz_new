@@ -8,22 +8,26 @@ const {
   submitAnswer,
   submitTest,
   getResultAnalysis,
-  getUserTestAttempts
+  getUserTestAttempts,
+  getLeaderboard
 } = require('../../controllers/User/testAttemptController');
 
 // Start Test
-router.post('/:seriesId/:testId/start', userAuthMiddleware, checkContentAccess, startTest);
+router.post('/:seriesId/:testId/start', userAuthMiddleware, checkTestAccess({ mode: 'START' }), startTest);
 
 // Submit Answer
-router.post('/:seriesId/:testId/submit-question', userAuthMiddleware, checkTestAccess, submitAnswer);
+router.post('/:seriesId/:testId/submit-question', userAuthMiddleware, checkTestAccess({ mode: 'SUBMIT' }), submitAnswer);
 
 // Submit Test (Finish Test)
-router.post('/:seriesId/:testId/submit', userAuthMiddleware, checkTestAccess, submitTest);
+router.post('/:seriesId/:testId/submit', userAuthMiddleware, checkTestAccess({ mode: 'SUBMIT' }), submitTest);
 
 // Get Full Result Analysis
 router.get('/:attemptId/result', userAuthMiddleware, getResultAnalysis);
 
 // Get User's Test Attempts
 router.get('/my-attempts', userAuthMiddleware, getUserTestAttempts);
+
+// Get Leaderboard for a test
+router.get('/:seriesId/:testId/leaderboard', userAuthMiddleware, checkTestAccess({ mode: 'LEADERBOARD' }), getLeaderboard);
 
 module.exports = router;

@@ -184,6 +184,12 @@ const testSeriesSchema = new Schema(
       type: Number,
       required: true,
     },
+    // Add free quota field to handle the edge case where admin deletes tests
+    freeQuota: {
+      type: Number,
+      default: 2,  // Default to first 2 tests free
+      min: 0
+    },
     tests: [testSchema],
     isActive: {
       type: Boolean,

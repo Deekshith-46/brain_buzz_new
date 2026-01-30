@@ -12,7 +12,8 @@ const {
   getPreviousQuestionPaperExams,
   getPreviousQuestionPaperSubjects,
   getTestSeriesCategories,
-  getTestSeriesSubCategories
+  getTestSeriesSubCategories,
+  getTestSeriesLanguages
 } = require('../../controllers/User/filterController');
 const userAuthMiddleware = require('../../middlewares/User/authMiddleware');
 
@@ -40,5 +41,6 @@ router.get('/previous-question-papers/subjects', getPreviousQuestionPaperSubject
 // Test Series filter routes
 router.get('/test-series/categories', getTestSeriesCategories);
 router.get('/test-series/subcategories', getTestSeriesSubCategories);
+router.get('/test-series/languages', getTestSeriesLanguages);
 
 module.exports = router;

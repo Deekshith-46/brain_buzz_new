@@ -16,6 +16,21 @@ const checkTestSeriesAccess = async (userId, seriesId) => {
   return accessInfo.hasAccess && accessInfo.isValid;
 };
 
+// Helper function to calculate finalPrice from originalPrice and discount
+const calculateFinalPrice = (originalPrice, discount) => {
+  if (!discount || !discount.type) return originalPrice;
+  
+  let finalPrice = originalPrice;
+  
+  if (discount.type === 'percentage') {
+    finalPrice = originalPrice - (originalPrice * discount.value) / 100;
+  } else if (discount.type === 'fixed') {
+    finalPrice = originalPrice - discount.value;
+  }
+  
+  return Math.max(finalPrice, 0);
+};
+
 // Helper to determine test state based on timing
 const getTestState = (test) => {
   const now = new Date();
@@ -55,7 +70,7 @@ const getTestState = (test) => {
 // List all test series (public)
 exports.listPublicTestSeries = async (req, res) => {
   try {
-    const { category, subCategory } = req.query;
+    const { category, subCategory, lang } = req.query;
     const userId = req.user?._id;
     const userRole = req.user?.role;
 
@@ -70,6 +85,12 @@ exports.listPublicTestSeries = async (req, res) => {
     };
     if (category) filter.categories = category;
     if (subCategory) filter.subCategories = subCategory;
+    
+    // Handle language filtering by finding Language documents with the specified code
+    if (lang) {
+      // We'll handle language filtering after fetching the documents since languages is an array of ObjectIds
+      // and we need to match against the code field in the Language model
+    }
 
     console.log('Test Series filter:', JSON.stringify(filter, null, 2));
     
@@ -89,16 +110,24 @@ exports.listPublicTestSeries = async (req, res) => {
     console.log(`Total test series in DB: ${totalCount}, Active/Missing isActive: ${activeCount}, Inactive: ${inactiveCount}`);
     
     const seriesList = await TestSeries.find(filter)
-      .select('name description thumbnail date noOfTests tests categories subCategories isActive languages validity')
+      .select('name description thumbnail date noOfTests tests categories subCategories isActive languages validity originalPrice discount')
       .populate('categories', 'name slug')
       .populate('subCategories', 'name slug')
       .populate('languages', 'name code')
       .populate('validity', 'label durationInDays');
 
     console.log(`Found ${seriesList.length} test series matching filter`);
+    
+    // Apply language filtering after fetching documents
+    let filteredSeriesList = seriesList;
+    if (lang) {
+      filteredSeriesList = seriesList.filter(series => {
+        return series.languages && series.languages.some(language => language.code === lang);
+      });
+    }
 
     // For each series, check if user has access
-    const seriesWithAccess = await Promise.all(seriesList.map(async (series) => {
+    const seriesWithAccess = await Promise.all(filteredSeriesList.map(async (series) => {
       const hasAccess = userRole === 'ADMIN' ? true : (userId ? await checkTestSeriesAccess(userId, series._id) : false);
       
       return {
@@ -113,6 +142,8 @@ exports.listPublicTestSeries = async (req, res) => {
         subCategories: series.subCategories,
         languages: series.languages,
         validity: series.validity,
+        originalPrice: series.originalPrice,
+        discount: series.discount,
         hasAccess
       };
     }));
@@ -160,22 +191,35 @@ exports.getPublicTestSeriesById = async (req, res) => {
 
     // Prepare test list with access control
     const tests = series.tests.map((test, index) => {
-      const isFree = index < 2;
+      // Use freeQuota from the test series instead of hardcoded position
+      const isFree = index < (series.freeQuota || 2);
       const testHasAccess = userRole === 'ADMIN' || hasAccess || isFree;
+      
+      // Calculate total number of questions from all sections
+      let totalQuestions = 0;
+      if (test.sections && Array.isArray(test.sections)) {
+        totalQuestions = test.sections.reduce((sum, section) => {
+          return sum + (section.questions ? section.questions.length : 0);
+        }, 0);
+      }
+      
+      // Determine test state
+      const testState = getTestState(test);
       
       return {
         _id: test._id,
         testName: test.testName,
-        noOfQuestions: test.questions?.length || 0,
+        noOfQuestions: totalQuestions,
         totalMarks: test.totalMarks,
         positiveMarks: test.positiveMarks,
         negativeMarks: test.negativeMarks,
         date: test.date,
         startTime: test.startTime,
         endTime: test.endTime,
-        // First two tests are free
-        isFree,
-        hasAccess: testHasAccess
+        testState, // Add test state
+        accessType: isFree ? 'FREE' : 'PAID',
+        hasAccess: testHasAccess,
+        resultPublishTime: test.resultPublishTime
       };
     });
 
@@ -192,6 +236,8 @@ exports.getPublicTestSeriesById = async (req, res) => {
         subCategories: series.subCategories,
         languages: series.languages,
         validity: series.validity,
+        originalPrice: series.originalPrice,
+        discount: series.discount,
         tests,
         hasAccess
       }
@@ -263,8 +309,8 @@ exports.getPublicTestInSeries = async (req, res) => {
       startTime: test.startTime,
       endTime: test.endTime,
       resultPublishTime: test.resultPublishTime,
-      // First two tests are free for non-admin users
-      isFree: testIndex < 2 && userRole !== 'ADMIN',
+      // Use freeQuota from the test series instead of hardcoded position
+      isFree: testIndex < (testSeries.freeQuota || 2) && userRole !== 'ADMIN',
       testState, // Add test state
       hasAccess
     };
@@ -371,8 +417,8 @@ exports.getPublicTestInSeriesPublic = async (req, res) => {
       startTime: test.startTime,
       endTime: test.endTime,
       resultPublishTime: test.resultPublishTime,
-      // First two tests are free
-      isFree: testIndex < 2,
+      // Use freeQuota from the test series instead of hardcoded position
+      isFree: testIndex < (testSeries.freeQuota || 2),
       testState, // Add test state
       hasAccess: false, // Always false for public access
       sections: (test.sections || []).map(section => ({
@@ -442,6 +488,79 @@ exports.initiatePurchase = async (req, res) => {
       success: false,
       message: error.message || 'Failed to initiate purchase',
       error: error.message
+    });
+  }
+};
+
+// Public: list test series with optional filters (matches Online Course format)
+exports.listTestSeries = async (req, res) => {
+  try {
+    const { category, subCategory, language, lang } = req.query;
+    const userId = req.user?._id;
+
+    const filter = {
+      contentType: 'TEST_SERIES',
+      isActive: true,
+    };
+
+    if (category) filter.categories = category;
+    if (subCategory) filter.subCategories = subCategory;
+    if (language) filter.languages = language;
+    if (lang) {
+      const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const LanguageModel = require('../../models/Course/Language');
+      const langDoc = await LanguageModel.findOne({
+        $or: [
+          { code: lang.toLowerCase() },
+          { name: { $regex: `^${escapeRegex(lang)}$`, $options: 'i' } },
+        ],
+      });
+      if (!langDoc) {
+        return res.status(400).json({ message: 'Invalid language code or name' });
+      }
+      filter.languages = langDoc._id;
+    }
+
+    const testSeries = await TestSeries.find(filter)
+      .populate('categories', 'name slug description thumbnailUrl')
+      .populate('subCategories', 'name slug description thumbnailUrl')
+      .populate('languages', 'name code')
+      .populate('validity', 'label durationInDays');
+
+    // Process test series to return only specified fields
+    const processedTestSeries = await Promise.all(
+      testSeries.map(async (series) => {
+        const hasPurchased = await checkTestSeriesAccess(userId, series._id);
+        const seriesObj = series.toObject();
+        
+        // Calculate finalPrice
+        const finalPrice = calculateFinalPrice(seriesObj.originalPrice, seriesObj.discount);
+        
+        // Return only the requested fields
+        const filteredSeries = {
+          _id: seriesObj._id,
+          name: seriesObj.name,
+          thumbnailUrl: seriesObj.thumbnail,
+          originalPrice: seriesObj.originalPrice,
+          discountPrice: seriesObj.discount?.value || 0,
+          finalPrice: finalPrice,
+          languages: seriesObj.languages,
+          validities: seriesObj.validity ? [seriesObj.validity] : [],
+          hasPurchased: hasPurchased,
+          isValid: hasPurchased // Assuming validity is tied to purchase
+        };
+        
+        return filteredSeries;
+      })
+    );
+
+    return res.status(200).json({ data: processedTestSeries });
+  } catch (error) {
+    console.error('Error listing test series:', error);
+    return res.status(500).json({ 
+      success: false,
+      message: 'Server error', 
+      error: error.message 
     });
   }
 };

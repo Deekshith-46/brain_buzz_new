@@ -4,6 +4,9 @@ const TestRanking = require('../../models/TestSeries/TestRanking');
 const Cutoff = require('../../models/TestSeries/Cutoff');
 const User = require('../../models/User/User');
 
+// Import TestSeriesAccessService
+const TestSeriesAccessService = require('../../../services/testSeriesAccessService');
+
 // Helper to determine test state based on timing
 const getTestState = (test) => {
   const now = new Date();
@@ -15,7 +18,6 @@ const getTestState = (test) => {
   
   const startTime = new Date(test.startTime);
   const endTime = new Date(test.endTime);
-  const resultPublishTime = test.resultPublishTime ? new Date(test.resultPublishTime) : null;
   
   // Before startTime
   if (now < startTime) {
@@ -27,13 +29,8 @@ const getTestState = (test) => {
     return 'live';
   }
   
-  // After endTime but before resultPublishTime
-  if (resultPublishTime && now > endTime && now < resultPublishTime) {
-    return 'result_pending';
-  }
-  
-  // After resultPublishTime or if no resultPublishTime, after endTime
-  if (!resultPublishTime || now >= resultPublishTime) {
+  // After endTime - results available immediately
+  if (now > endTime) {
     return 'results_available';
   }
   
@@ -46,15 +43,6 @@ exports.startTest = async (req, res) => {
     const { seriesId, testId } = req.params;
     const userId = req.user._id;
 
-    // Check if user has access to this test series
-    const hasAccess = await checkTestSeriesAccess(userId, seriesId);
-    if (!hasAccess) {
-      return res.status(403).json({
-        success: false,
-        message: 'You do not have access to this test series'
-      });
-    }
-
     // Find the test series and the specific test
     const testSeries = await TestSeries.findById(seriesId);
     if (!testSeries) {
@@ -72,7 +60,51 @@ exports.startTest = async (req, res) => {
       });
     }
 
-    // Check test state
+    // Check if user already has an attempt for this test (active or completed)
+    // The unique index will prevent duplicate attempts at DB level
+    const userAttempt = await TestAttempt.findOne({
+      user: userId,
+      testSeries: seriesId,
+      testId: testId
+    });
+
+    if (userAttempt) {
+      if (userAttempt.status === 'IN_PROGRESS' && !userAttempt.resultGenerated) {
+        return res.status(200).json({
+          success: true,
+          message: 'Test attempt resumed',
+          data: userAttempt
+        });
+      }
+      
+      if (userAttempt.resultGenerated || userAttempt.status === 'SUBMITTED') {
+        return res.status(400).json({
+          success: false,
+          message: 'You have already completed this test'
+        });
+      }
+    }
+
+    // Determine if test is free based on freeQuota
+    const testIndex = testSeries.tests.findIndex(t => t._id.toString() === testId);
+    const isTestFree = testIndex < (testSeries.freeQuota || 2);
+
+    // Check if user has access to this test series
+    let hasAccess = false;
+    if (isTestFree) {
+      hasAccess = true; // Free test based on quota
+    } else {
+      hasAccess = await TestSeriesAccessService.hasTestAccess(userId, seriesId, testId);
+    }
+
+    if (!hasAccess) {
+      return res.status(403).json({
+        success: false,
+        message: 'You do not have access to this test series'
+      });
+    }
+
+    // Check test state - only allow starting live tests
     const testState = getTestState(test);
     if (testState !== 'live') {
       return res.status(400).json({
@@ -81,45 +113,38 @@ exports.startTest = async (req, res) => {
       });
     }
 
-    // Check if user already has an attempt for this test
-    const existingAttempt = await TestAttempt.findOne({
-      user: userId,
-      testSeries: seriesId,
-      testId: testId
-    });
+    // All attempt checking is already done above with userAttempt
+    // If we reach here, userAttempt is null (no existing attempt)
+    // So we can safely create a new attempt
 
-    if (existingAttempt && existingAttempt.resultGenerated) {
-      return res.status(400).json({
-        success: false,
-        message: 'You have already completed this test'
+    // Create new test attempt atomically
+    try {
+      const testAttempt = await TestAttempt.create({
+        user: userId,
+        testSeries: seriesId,
+        testId: testId,
+        startedAt: new Date(),
+        responses: [],
+        status: 'IN_PROGRESS'
       });
-    }
 
-    // If there's an existing attempt but not completed, return it
-    if (existingAttempt) {
-      return res.status(200).json({
+      return res.status(201).json({
         success: true,
-        message: 'Test attempt resumed',
-        data: existingAttempt
+        message: 'Test started successfully',
+        data: testAttempt
       });
+    } catch (error) {
+      // Handle duplicate key error (11000)
+      if (error.code === 11000) {
+        return res.status(400).json({
+          success: false,
+          message: 'Test already started'
+        });
+      }
+      
+      // Re-throw other errors
+      throw error;
     }
-
-    // Create new test attempt
-    const testAttempt = new TestAttempt({
-      user: userId,
-      testSeries: seriesId,
-      testId: testId,
-      startedAt: new Date(),
-      responses: []
-    });
-
-    await testAttempt.save();
-
-    return res.status(201).json({
-      success: true,
-      message: 'Test started successfully',
-      data: testAttempt
-    });
   } catch (error) {
     console.error('Error starting test:', error);
     return res.status(500).json({
@@ -128,24 +153,7 @@ exports.startTest = async (req, res) => {
       error: error.message
     });
   }
-};
-
-// Helper to check if user has access to a test series
-const checkTestSeriesAccess = async (userId, seriesId) => {
-  // This would typically check if the user has purchased the test series
-  // For now, we'll just check if the user exists and the series exists
-  const user = await User.findById(userId);
-  const testSeries = await TestSeries.findById(seriesId);
-  
-  if (!user || !testSeries) {
-    return false;
-  }
-  
-  // Check if the test is free or if user has purchased the series
-  // In a real implementation, you would check if the user has purchased the series
-  // For now, we'll assume they have access
-  return true;
-};
+}
 
 // Submit Answer
 exports.submitAnswer = async (req, res) => {
@@ -154,28 +162,9 @@ exports.submitAnswer = async (req, res) => {
     const { sectionId, questionId, selectedOption, timeTaken } = req.body;
     const userId = req.user._id;
 
-    // Find the test attempt
-    const testAttempt = await TestAttempt.findOne({
-      user: userId,
-      testSeries: seriesId,
-      testId: testId
-    });
-
-    if (!testAttempt) {
-      return res.status(404).json({
-        success: false,
-        message: 'Test attempt not found'
-      });
-    }
-
-    if (testAttempt.resultGenerated) {
-      return res.status(400).json({
-        success: false,
-        message: 'Test has already been submitted'
-      });
-    }
-
-    // Find the test series and the specific test
+    // VALIDATION PHASE - Do all validation BEFORE any DB updates
+    
+    // 1. Validate test series and test exist and get question data
     const testSeries = await TestSeries.findById(seriesId);
     if (!testSeries) {
       return res.status(404).json({
@@ -192,16 +181,7 @@ exports.submitAnswer = async (req, res) => {
       });
     }
 
-    // Check test state
-    const testState = getTestState(test);
-    if (testState !== 'live') {
-      return res.status(400).json({
-        success: false,
-        message: `Test is not available. Current state: ${testState}`
-      });
-    }
-
-    // Find the section and question
+    // 2. Find the section and question
     let question = null;
     let section = null;
     for (const sec of test.sections) {
@@ -220,42 +200,124 @@ exports.submitAnswer = async (req, res) => {
       });
     }
 
-    // Check if answer is correct
-    const isCorrect = question.correctOptionIndex === selectedOption;
-
-    // Check if this response already exists
-    const existingResponseIndex = testAttempt.responses.findIndex(
-      r => r.sectionId === sectionId && r.questionId === questionId
-    );
-
-    if (existingResponseIndex >= 0) {
-      // Update existing response
-      testAttempt.responses[existingResponseIndex] = {
-        sectionId,
-        questionId,
-        selectedOption,
-        isCorrect,
-        timeTaken
-      };
-    } else {
-      // Add new response
-      testAttempt.responses.push({
-        sectionId,
-        questionId,
-        selectedOption,
-        isCorrect,
-        timeTaken
+    // 3. Validate selected option BEFORE any DB operations
+    if (selectedOption < 0 || selectedOption >= question.options.length) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid option selected'
       });
     }
 
-    await testAttempt.save();
+    // 4. Compute correctness BEFORE any DB operations
+    const isCorrect = question.correctOptionIndex === selectedOption;
+
+    // 5. Validate user access
+    const testIndex = testSeries.tests.findIndex(t => t._id.toString() === testId);
+    const isTestFree = testIndex < (testSeries.freeQuota || 2);
+    
+    let hasAccess = false;
+    if (isTestFree) {
+      hasAccess = true;
+    } else {
+      hasAccess = await TestSeriesAccessService.hasTestAccess(userId, seriesId, testId);
+    }
+
+    if (!hasAccess) {
+      return res.status(403).json({
+        success: false,
+        message: 'You do not have access to this test series'
+      });
+    }
+
+    // 6. Validate test state
+    const testState = getTestState(test);
+    if (!['live', 'results_available'].includes(testState)) {
+      return res.status(400).json({
+        success: false,
+        message: `Test cannot be submitted. Current state: ${testState}`
+      });
+    }
+
+    // 7. Validate test attempt exists and is active
+    const existingAttempt = await TestAttempt.findOne({
+      user: userId,
+      testSeries: seriesId,
+      testId: testId
+    });
+
+    if (!existingAttempt) {
+      return res.status(404).json({
+        success: false,
+        message: 'Test attempt not found'
+      });
+    }
+
+    // Extra guard: prevent answering after submission
+    if (existingAttempt.status !== 'IN_PROGRESS' || existingAttempt.resultGenerated) {
+      return res.status(400).json({
+        success: false,
+        message: 'Test already submitted'
+      });
+    }
+
+    // Create the response object with validated data
+    const newResponse = {
+      sectionId,
+      questionId,
+      selectedOption,
+      isCorrect,
+      timeTaken
+    };
+
+    // Use atomic update to handle response submission
+    const updatedAttempt = await TestAttempt.findOneAndUpdate(
+      {
+        user: userId,
+        testSeries: seriesId,
+        testId: testId,
+        resultGenerated: { $ne: true },
+        status: 'IN_PROGRESS',
+        'responses.questionId': { $ne: questionId } // Response doesn't exist yet
+      },
+      {
+        $push: { responses: newResponse }
+      },
+      { new: true }
+    );
+
+    // If the first update didn't work (response already exists), update existing
+    if (!updatedAttempt) {
+      await TestAttempt.updateOne(
+        {
+          user: userId,
+          testSeries: seriesId,
+          testId: testId,
+          resultGenerated: { $ne: true },
+          status: 'IN_PROGRESS',
+          'responses.questionId': questionId
+        },
+        {
+          $set: { 
+            'responses.$[elem].selectedOption': selectedOption,
+            'responses.$[elem].isCorrect': isCorrect,
+            'responses.$[elem].timeTaken': timeTaken
+          }
+        },
+        {
+          arrayFilters: [{ 'elem.questionId': questionId }],
+          new: true
+        }
+      );
+    }
+
+    // All validation completed above - proceed with atomic update
 
     return res.status(200).json({
       success: true,
       message: 'Answer submitted successfully',
       data: {
-        isCorrect,
-        correctOption: question.correctOptionIndex
+        isCorrect
+        // NOTE: Do NOT return correctOption immediately to prevent cheating
       }
     });
   } catch (error) {
@@ -274,27 +336,39 @@ exports.submitTest = async (req, res) => {
     const { seriesId, testId } = req.params;
     const userId = req.user._id;
 
-    // Find the test attempt
+    // STEP 1: Lock the attempt (find without modifying)
     const testAttempt = await TestAttempt.findOne({
       user: userId,
       testSeries: seriesId,
-      testId: testId
+      testId: testId,
+      resultGenerated: { $ne: true },
+      status: 'IN_PROGRESS'
     });
 
     if (!testAttempt) {
+      // Check if test was already submitted
+      const submittedAttempt = await TestAttempt.findOne({
+        user: userId,
+        testSeries: seriesId,
+        testId: testId,
+        resultGenerated: true
+      });
+      
+      if (submittedAttempt) {
+        return res.status(400).json({
+          success: false,
+          message: 'Test has already been submitted'
+        });
+      }
+      
       return res.status(404).json({
         success: false,
-        message: 'Test attempt not found'
+        message: 'Test attempt not found or already submitted'
       });
     }
 
-    if (testAttempt.resultGenerated) {
-      return res.status(400).json({
-        success: false,
-        message: 'Test has already been submitted'
-      });
-    }
-
+    // STEP 2: Perform all validations BEFORE state change
+    
     // Find the test series and the specific test
     const testSeries = await TestSeries.findById(seriesId);
     if (!testSeries) {
@@ -312,27 +386,78 @@ exports.submitTest = async (req, res) => {
       });
     }
 
-    // Check test state
-    const testState = getTestState(test);
-    if (testState !== 'live') {
-      return res.status(400).json({
+    // Check access
+    const testIndex = testSeries.tests.findIndex(t => t._id.toString() === testId);
+    const isTestFree = testIndex < (testSeries.freeQuota || 2);
+    
+    let hasAccess = false;
+    if (isTestFree) {
+      hasAccess = true;
+    } else {
+      hasAccess = await TestSeriesAccessService.hasTestAccess(userId, seriesId, testId);
+    }
+
+    if (!hasAccess) {
+      return res.status(403).json({
         success: false,
-        message: `Test is not available. Current state: ${testState}`
+        message: 'You do not have access to this test series'
       });
     }
+
+    // Check test state
+    const testState = getTestState(test);
+    if (!['live', 'results_available'].includes(testState)) {
+      return res.status(400).json({
+        success: false,
+        message: `Test cannot be submitted. Current state: ${testState}`
+      });
+    }
+
+    // STEP 3: Atomically submit the test AFTER all validations pass
+    const updatedAttempt = await TestAttempt.findOneAndUpdate(
+      {
+        _id: testAttempt._id,
+        user: userId,
+        testSeries: seriesId,
+        testId: testId,
+        resultGenerated: { $ne: true },
+        status: 'IN_PROGRESS'
+      },
+      { 
+        $set: { 
+          resultGenerated: true, 
+          submittedAt: new Date(),
+          status: 'SUBMITTED'
+        }
+      },
+      { new: true }
+    );
+
+    // If update failed, someone else submitted it
+    if (!updatedAttempt) {
+      return res.status(400).json({
+        success: false,
+        message: 'Test submission failed - attempt may have been submitted by another request'
+      });
+    }
+
+    // Use the updated attempt for scoring
+    const finalTestAttempt = updatedAttempt;
+
+    // All validations completed above
 
     // Calculate results
     const totalQuestions = test.sections.reduce((total, section) => {
       return total + (section.questions ? section.questions.length : 0);
     }, 0);
 
-    const correct = testAttempt.responses.filter(r => r.isCorrect).length;
-    const incorrect = testAttempt.responses.filter(r => r.isCorrect === false).length;
+    const correct = finalTestAttempt.responses.filter(r => r.isCorrect).length;
+    const incorrect = finalTestAttempt.responses.filter(r => r.isCorrect === false).length;
     const unattempted = totalQuestions - (correct + incorrect);
 
     // Calculate score
     let score = 0;
-    for (const response of testAttempt.responses) {
+    for (const response of finalTestAttempt.responses) {
       // Find the question to get its marks
       let question = null;
       for (const section of test.sections) {
@@ -356,40 +481,43 @@ exports.submitTest = async (req, res) => {
     const accuracy = correct + incorrect > 0 ? (correct / (correct + incorrect)) * 100 : 0;
 
     // Calculate time taken and speed
-    const timeTakenMs = testAttempt.submittedAt ? 
-      new Date(testAttempt.submittedAt).getTime() - new Date(testAttempt.startedAt).getTime() :
-      new Date().getTime() - new Date(testAttempt.startedAt).getTime();
+    const timeTakenMs = finalTestAttempt.submittedAt ? 
+      new Date(finalTestAttempt.submittedAt).getTime() - new Date(finalTestAttempt.startedAt).getTime() :
+      new Date().getTime() - new Date(finalTestAttempt.startedAt).getTime();
     
     const timeTakenMinutes = timeTakenMs / (1000 * 60);
     const speed = timeTakenMinutes > 0 ? (correct + incorrect) / timeTakenMinutes : 0;
 
-    // Update test attempt with results
-    testAttempt.submittedAt = new Date();
-    testAttempt.score = score;
-    testAttempt.correct = correct;
-    testAttempt.incorrect = incorrect;
-    testAttempt.unattempted = unattempted;
-    testAttempt.accuracy = accuracy;
-    testAttempt.speed = speed;
-    testAttempt.percentage = totalQuestions > 0 ? (correct / totalQuestions) * 100 : 0;
-    testAttempt.resultGenerated = true;
+    // Update test attempt with calculated results (don't overwrite atomic fields)
+    finalTestAttempt.score = score;
+    finalTestAttempt.correct = correct;
+    finalTestAttempt.incorrect = incorrect;
+    finalTestAttempt.unattempted = unattempted;
+    finalTestAttempt.accuracy = accuracy;
+    finalTestAttempt.speed = speed;
+    finalTestAttempt.percentage = totalQuestions > 0 ? (correct / totalQuestions) * 100 : 0;
+    // submittedAt and resultGenerated already set by atomic update
 
-    await testAttempt.save();
+    await finalTestAttempt.save();
 
-    // Update ranking
-    const userRanking = await updateRanking(seriesId, testId, userId, score, accuracy);
-    
-    // Save the rank in the test attempt
-    if (userRanking) {
-      testAttempt.rank = userRanking.rank;
-      await testAttempt.save();
-    }
-
-    return res.status(200).json({
+    // Return response immediately for better UX
+    const response = res.status(200).json({
       success: true,
       message: 'Test submitted successfully',
-      data: testAttempt
+      data: finalTestAttempt
     });
+
+    // Update ranking asynchronously to improve performance
+    setImmediate(async () => {
+      try {
+        await updateRanking(seriesId, testId, userId, score, accuracy);
+      } catch (error) {
+        console.error('Error updating ranking:', error);
+        // Don't fail the main submission if ranking fails
+      }
+    });
+
+    return response;
   } catch (error) {
     console.error('Error submitting test:', error);
     return res.status(500).json({
@@ -415,14 +543,26 @@ const updateRanking = async (seriesId, testId, userId, score, accuracy) => {
       { upsert: true, new: true }
     );
 
-    // Recalculate all ranks for this test
-    const allRankings = await TestRanking.find({ testId }).sort({ score: -1 });
+    // Get all rankings for this test sorted by score (descending), then accuracy, then submission time
+    const allRankings = await TestRanking.find({ testId })
+      .sort({ score: -1, accuracy: -1, createdAt: 1 });
 
-    // Update ranks
-    for (let i = 0; i < allRankings.length; i++) {
-      allRankings[i].rank = i + 1;
-      allRankings[i].totalParticipants = allRankings.length;
-      await allRankings[i].save();
+    // Calculate ranks in memory to reduce database operations
+    const updates = allRankings.map((ranking, index) => ({
+      updateOne: {
+        filter: { _id: ranking._id },
+        update: { 
+          $set: { 
+            rank: index + 1,
+            totalParticipants: allRankings.length
+          }
+        }
+      }
+    }));
+
+    // Execute all updates in a single bulk operation
+    if (updates.length > 0) {
+      await TestRanking.bulkWrite(updates);
     }
     
     // Return the user's ranking
@@ -485,13 +625,8 @@ exports.getResultAnalysis = async (req, res) => {
       });
     }
 
-    // Check if result publish time has passed
-    if (test.resultPublishTime && new Date() < new Date(test.resultPublishTime)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Test result not yet published'
-      });
-    }
+    // With simplified state logic, results are available immediately after submission
+    // No additional checks needed for result publish time
 
     // Get user ranking
     const userRanking = await TestRanking.findOne({
@@ -672,22 +807,9 @@ exports.getUserTestAttempts = async (req, res) => {
       .populate('testSeries', 'name')
       .sort({ createdAt: -1 });
     
-    // Filter out attempts where result is not yet published
-    const filteredAttempts = [];
-    
-    for (const attempt of attempts) {
-      // Find the test series and the specific test
-      const testSeries = await TestSeries.findById(attempt.testSeries);
-      if (testSeries) {
-        const test = testSeries.tests.id(attempt.testId);
-        if (test) {
-          // Check if result publish time has passed
-          if (!test.resultPublishTime || new Date() >= new Date(test.resultPublishTime)) {
-            filteredAttempts.push(attempt);
-          }
-        }
-      }
-    }
+    // With simplified state logic, all completed attempts are available
+    // Since results are available immediately after submission, show all completed attempts
+    const filteredAttempts = attempts.filter(attempt => attempt.resultGenerated);
     
     return res.status(200).json({
       success: true,
@@ -702,3 +824,64 @@ exports.getUserTestAttempts = async (req, res) => {
     });
   }
 }
+
+// Get Leaderboard for a specific test
+exports.getLeaderboard = async (req, res) => {
+  try {
+    const { seriesId, testId } = req.params;
+    
+    // Find the test series and the specific test to verify they exist
+    const testSeries = await TestSeries.findById(seriesId);
+    if (!testSeries) {
+      return res.status(404).json({
+        success: false,
+        message: 'Test series not found'
+      });
+    }
+
+    const test = testSeries.tests.id(testId);
+    if (!test) {
+      return res.status(404).json({
+        success: false,
+        message: 'Test not found in this series'
+      });
+    }
+
+    // Get rankings for this test sorted by rank (single source of truth)
+    const rankings = await TestRanking.find({ testId })
+      .populate('user', 'name email')
+      .sort({ rank: 1 }); // Sort by pre-calculated rank
+
+    // Get total participants count
+    const totalParticipants = await TestRanking.countDocuments({ testId });
+
+    // Prepare leaderboard data using rank as position
+    const leaderboard = rankings.map((ranking) => ({
+      position: ranking.rank,
+      user: {
+        name: ranking.user?.name,
+        email: ranking.user?.email
+      },
+      score: ranking.score,
+      accuracy: ranking.accuracy,
+      totalParticipants: totalParticipants
+    }));
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        testId,
+        testName: test.testName,
+        totalParticipants,
+        leaderboard
+      }
+    });
+  } catch (error) {
+    console.error('Error getting leaderboard:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+};

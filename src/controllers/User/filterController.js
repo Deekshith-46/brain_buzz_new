@@ -642,4 +642,48 @@ exports.getTestSeriesSubCategories = async (req, res) => {
   }
 };
 
+// Get distinct languages for active test series
+exports.getTestSeriesLanguages = async (req, res) => {
+  try {
+    const { category, subCategory } = req.query;
+    
+    const filter = {
+      contentType: 'TEST_SERIES',
+      isActive: true
+    };
+
+    if (category) filter.categories = category;
+    if (subCategory) filter.subCategories = subCategory;
+
+    const testSeries = await TestSeries.find(filter).populate('languages', 'name code');
+
+    // Extract unique languages
+    const languages = [];
+    const languageIds = new Set();
+    
+    testSeries.forEach(ts => {
+      if (ts.languages) {
+        ts.languages.forEach(lang => {
+          if (!languageIds.has(lang._id.toString())) {
+            languageIds.add(lang._id.toString());
+            languages.push({
+              _id: lang._id,
+              name: lang.name,
+              code: lang.code
+            });
+          }
+        });
+      }
+    });
+
+    return res.status(200).json({ data: languages });
+  } catch (error) {
+    const errorResponse = handleDatabaseError(error);
+    return res.status(errorResponse.statusCode).json({
+      message: errorResponse.message,
+      error: errorResponse.error
+    });
+  }
+};
+
 

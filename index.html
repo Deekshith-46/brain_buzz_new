@@ -3,217 +3,659 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Test Razorpay Integration</title>
+    <title>Brain Buzz - Test Series & Course Purchase</title>
     <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        .container {
-            border: 1px solid #ddd;
-            padding: 20px;
-            border-radius: 8px;
-            margin-top: 20px;
-        }
-        button {
-            background-color: #4CAF50;
-            color: white;
-            padding: 10px 15px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 16px;
-            margin: 10px 0;
-        }
-        button:hover {
-            background-color: #45a049;
-        }
-        pre {
-            background-color: #f5f5f5;
-            padding: 15px;
-            border-radius: 4px;
-            overflow-x: auto;
-        }
-        .form-group {
-            margin-bottom: 15px;
-        }
-        label {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: bold;
-        }
-        input[type="text"] {
-            width: 100%;
-            padding: 8px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
+        * {
+            margin: 0;
+            padding: 0;
             box-sizing: border-box;
         }
-        .token-section {
-            background-color: #f0f8ff;
-            padding: 15px;
-            border-radius: 4px;
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .main-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(90deg, #4CAF50, #45a049);
+            color: white;
+            padding: 25px 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 5px;
+        }
+        
+        .header p {
+            opacity: 0.9;
+            font-size: 16px;
+        }
+        
+        .content {
+            padding: 30px;
+        }
+        
+        .auth-section {
+            background: #f8f9fa;
+            padding: 25px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            border: 1px solid #e9ecef;
+        }
+        
+        .auth-section h3 {
+            color: #333;
             margin-bottom: 20px;
+            font-size: 20px;
         }
-        .error {
-            color: red;
-            margin-top: 10px;
+        
+        .form-row {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 15px;
         }
+        
+        .form-group {
+            flex: 1;
+            margin-bottom: 15px;
+        }
+        
+        .form-group.full-width {
+            flex: 100%;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #555;
+        }
+        
+        input[type="text"], input[type="number"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        
+        input[type="text"]:focus, input[type="number"]:focus {
+            outline: none;
+            border-color: #4CAF50;
+        }
+        
+        .btn {
+            background: #4CAF50;
+            color: white;
+            padding: 12px 25px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: all 0.3s;
+            display: inline-block;
+            text-decoration: none;
+            margin: 5px;
+        }
+        
+        .btn:hover {
+            background: #45a049;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        
+        .btn-secondary {
+            background: #2196F3;
+        }
+        
+        .btn-secondary:hover {
+            background: #1976D2;
+        }
+        
+        .btn-warning {
+            background: #ff9800;
+        }
+        
+        .btn-warning:hover {
+            background: #f57c00;
+        }
+        
+        .btn-danger {
+            background: #f44336;
+        }
+        
+        .btn-danger:hover {
+            background: #d32f2f;
+        }
+        
+        .product-selection {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 25px;
+        }
+        
+        .product-card {
+            flex: 1;
+            padding: 20px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-align: center;
+        }
+        
+        .product-card.selected {
+            border-color: #4CAF50;
+            background: #f1f8e9;
+            transform: scale(1.02);
+        }
+        
+        .product-card h3 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        
+        .product-card p {
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .step-container {
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 10px;
+            padding: 25px;
+            margin-bottom: 25px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+        
+        .step-container h2 {
+            color: #333;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #4CAF50;
+        }
+        
+        .hidden {
+            display: none;
+        }
+        
+        .response-box {
+            background: #f5f5f5;
+            border-left: 4px solid #4CAF50;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 15px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .success-message {
+            background: #d4edda;
+            border-left: 4px solid #28a745;
+            color: #155724;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+        }
+        
+        .error-message {
+            background: #f8d7da;
+            border-left: 4px solid #dc3545;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+        }
+        
+        .warning-message {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            color: #856404;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+        }
+        
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #4CAF50;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .test-series-list, .course-list {
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+        }
+        
+        .test-series-item, .course-item {
+            padding: 15px;
+            border: 1px solid #eee;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            background: #fafafa;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .test-series-item:hover, .course-item:hover {
+            background: #f0f0f0;
+            border-color: #4CAF50;
+        }
+        
+        .price-display {
+            font-size: 18px;
+            font-weight: bold;
+            color: #4CAF50;
+            margin-top: 5px;
+        }
+        
+        .discount-display {
+            font-size: 14px;
+            color: #ff5722;
+            text-decoration: line-through;
+            margin-top: 3px;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e0e0e0;
+            border-radius: 4px;
+            margin: 20px 0;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4CAF50, #45a049);
+            width: 0%;
+            transition: width 0.5s ease;
+        }
+        
+        .coupon-section {
+            background: #fff8e1;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            border: 1px dashed #ffc107;
+        }
+        
+        .exam-section {
+            background: #e8f5e8;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 15px 0;
+            border: 1px solid #4CAF50;
+        }
+        
+        .exam-item {
+            padding: 15px;
+            border: 1px solid #c8e6c9;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            background: white;
+            cursor: pointer;
+        }
+        
+        .exam-item:hover {
+            background: #e8f5e8;
+        }
+        
+        .exam-state {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-top: 5px;
+        }
+        
+        .state-upcoming { background: #ffeb3b; color: #333; }
+        .state-live { background: #4caf50; color: white; }
+        .state-result_pending { background: #ff9800; color: white; }
+        .state-results_available { background: #2196f3; color: white; }
     </style>
 </head>
 <body>
-    <h1>Razorpay Test Integration</h1>
-    
-    <div class="token-section">
-        <h3>Authentication</h3>
-        <div class="form-group">
-            <label for="jwtToken">JWT Token:</label>
-            <input type="text" id="jwtToken" placeholder="Enter your JWT token" style="width: 100%;">
-            <small>Get this token after logging into the application</small>
+    <div class="main-container">
+        <div class="header">
+            <h1>Brain Buzz - Test Series & Exam Platform</h1>
+            <p>Secure Payment & Exam Taking System</p>
         </div>
-        <div class="form-group">
-            <label for="apiBaseUrl">API Base URL:</label>
-            <input type="text" id="apiBaseUrl" placeholder="Enter API base URL" value="http://localhost:3000/api/v1" style="width: 100%;">
-            <small>Default: http://localhost:3000/api/v1</small>
-        </div>
-        <button id="saveTokenBtn">Save Token</button>
-        <div id="tokenStatus" class="error"></div>
-    </div>
-    
-    <div class="container">
-        <h2>Step 1: Create Order</h2>
-
-        <div style="margin-bottom: 15px;">
-            <label><strong>Select Product Type:</strong></label>
-            <div>
-                <label style="margin-right: 15px;">
-                    <input type="radio" name="itemType" value="test_series" checked> Test Series
-                </label>
-                <label>
-                    <input type="radio" name="itemType" value="online_course"> Online Course
-                </label>
-            </div>
-        </div>
-
-        <div id="testSeriesFields">
-            <div class="form-group">
-                <label for="testSeriesId">Test Series ID:</label>
-                <input type="text" id="testSeriesId" placeholder="Enter test series ID">
-            </div>
-        </div>
-
-        <div id="courseFields" style="display:none;">
-            <div class="form-group">
-                <label for="courseId">Course ID:</label>
-                <input type="text" id="courseId" placeholder="Enter course ID">
-            </div>
-        </div>
-
-        <div class="form-group">
-            <label for="couponCode">Coupon Code (optional):</label>
-            <input type="text" id="couponCode" placeholder="Enter coupon code">
-        </div>
-
-        <button id="createOrderBtn">Create Order</button>
-        <button id="viewCoursesBtn" style="background-color: #2196F3; margin-left: 10px;">View All Courses</button>
         
-        <div id="orderDetails" style="display: none; margin-top: 20px;">
-            <h3>Order Created Successfully!</h3>
-            <pre id="orderResponse"></pre>
+        <div class="content">
+            <!-- Authentication Section -->
+            <div class="auth-section">
+                <h3>Authentication & Configuration</h3>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="jwtToken">JWT Token:</label>
+                        <input type="text" id="jwtToken" placeholder="Enter your JWT token">
+                        <small>Get this token after logging into the application</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="apiBaseUrl">API Base URL:</label>
+                        <input type="text" id="apiBaseUrl" placeholder="Enter API base URL" value="http://localhost:5000/api/v1">
+                        <small>Default: http://localhost:5000/api/v1</small>
+                    </div>
+                </div>
+                
+                <button id="saveTokenBtn" class="btn btn-secondary">Save Configuration</button>
+                <div id="authStatus" class="warning-message hidden"></div>
+            </div>
+            
+            <!-- Progress Bar -->
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            
+            <!-- Product Selection -->
+            <div class="step-container">
+                <h2>Step 1: Select Product Type</h2>
+                
+                <div class="product-selection">
+                    <div class="product-card" data-type="test_series">
+                        <h3>📚 Test Series</h3>
+                        <p>Comprehensive test preparation packages with multiple mock tests</p>
+                    </div>
+                    <div class="product-card" data-type="online_course">
+                        <h3>🎓 Online Course</h3>
+                        <p>Complete learning courses with video lectures and materials</p>
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <button id="loadTestSeriesBtn" class="btn btn-secondary">Load Test Series</button>
+                        <button id="loadMyTestSeriesBtn" class="btn btn-secondary">Load My Test Series</button>
+                    </div>
+                </div>
+                
+                <div id="testSeriesSelection" class="hidden">
+                    <h3>Select Test Series:</h3>
+                    <div id="testSeriesList" class="test-series-list">
+                        <p>Loading test series...</p>
+                    </div>
+                </div>
+                
+                <div id="myTestSeriesSection" class="hidden">
+                    <h3>My Test Series:</h3>
+                    <div id="myTestSeriesList" class="test-series-list">
+                        <p>Loading your test series...</p>
+                    </div>
+                </div>
+                
+                <div id="courseSelection" class="hidden">
+                    <h3>Select Course:</h3>
+                    <div id="courseList" class="course-list">
+                        <p>Loading courses...</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Coupon Section -->
+            <div class="coupon-section hidden" id="couponSection">
+                <h3>Coupon Code</h3>
+                <div class="form-row">
+                    <div class="form-group">
+                        <input type="text" id="couponCode" placeholder="Enter coupon code (optional)">
+                    </div>
+                    <div class="form-group">
+                        <button id="applyCouponBtn" class="btn btn-warning">Apply Coupon</button>
+                    </div>
+                </div>
+                <div id="couponResult"></div>
+            </div>
+            
+            <!-- Order Creation -->
+            <div class="step-container hidden" id="orderSection">
+                <h2>Step 2: Create Order</h2>
+                
+                <div id="orderPreview">
+                    <h3>Order Preview</h3>
+                    <div id="orderPreviewContent"></div>
+                </div>
+                
+                <button id="createOrderBtn" class="btn">Create Order</button>
+                
+                <div id="orderDetails" class="hidden">
+                    <h3>Order Created Successfully!</h3>
+                    <div class="response-box" id="orderResponse"></div>
+                </div>
+            </div>
+            
+            <!-- Payment Section -->
+            <div class="step-container hidden" id="paymentSection">
+                <h2>Step 3: Make Payment</h2>
+                
+                <div id="paymentInfo">
+                    <h3>Payment Details</h3>
+                    <div id="paymentDetails"></div>
+                </div>
+                
+                <button id="payNowBtn" class="btn">Pay Now</button>
+                
+                <div id="paymentResponse"></div>
+            </div>
+            
+            <!-- Verification Section -->
+            <div class="step-container hidden" id="verificationSection">
+                <h2>Step 4: Verify Payment</h2>
+                
+                <div id="verificationResponse"></div>
+            </div>
+            
+            <!-- Exam Section -->
+            <div class="step-container hidden" id="examSection">
+                <h2>Step 5: Take Exam</h2>
+                
+                <div class="exam-section">
+                    <h3>Available Exams</h3>
+                    <div id="examList" class="test-series-list">
+                        <p>Loading available exams...</p>
+                    </div>
+                </div>
+                
+                <div id="examActions" class="hidden">
+                    <h3>Exam Actions</h3>
+                    <button id="startExamBtn" class="btn">Start Exam</button>
+                    <button id="viewResultsBtn" class="btn btn-secondary">View Results</button>
+                </div>
+            </div>
+            
+            <!-- Success Section -->
+            <div class="step-container hidden" id="successSection">
+                <h2>🎉 Purchase Completed!</h2>
+                
+                <div class="success-message">
+                    <h3>Thank you for your purchase!</h3>
+                    <p>Your Test Series is now available for access.</p>
+                </div>
+                
+                <button id="viewMyTestSeriesBtn" class="btn btn-secondary">View My Test Series</button>
+                <button id="takeExamsBtn" class="btn">Take Exams</button>
+            </div>
         </div>
-    </div>
-
-    <div class="container" id="paymentSection" style="display: none;">
-        <h2>Step 2: Make Payment</h2>
-        <button id="payNowBtn">Pay Now</button>
-        <div id="paymentResponse" style="margin-top: 20px;"></div>
-    </div>
-
-    <div class="container" id="verificationSection" style="display: none;">
-        <h2>Step 3: Verify Payment</h2>
-        <div id="verificationResponse"></div>
-    </div>
-
-    <div class="container" id="courseAccessSection" style="display: none;">
-        <h2>Step 4: Test Course Access</h2>
-        <div class="form-group">
-            <label for="accessCourseId">Course ID to Test Access:</label>
-            <input type="text" id="accessCourseId" placeholder="Enter course ID">
-        </div>
-        <div class="form-group">
-            <label for="accessClassId">Class ID to Test Access:</label>
-            <input type="text" id="accessClassId" placeholder="Enter class ID">
-        </div>
-        <button id="testAccessBtn">Test Course Access</button>
-        <div id="accessResponse" style="margin-top: 20px;"></div>
     </div>
 
     <script>
+        let selectedProduct = null;
+        let selectedProductId = null;
         let orderData = null;
         let token = localStorage.getItem('jwtToken') || '';
-        let apiBaseUrl = localStorage.getItem('apiBaseUrl') || 'http://localhost:3000/api/v1'; // Updated to match your backend
+        let apiBaseUrl = localStorage.getItem('apiBaseUrl') || 'http://localhost:5000/api/v1';
+        let selectedTestSeries = null;
+        let selectedCourse = null;
+        let selectedExam = null;
         
-        // Update API base URL from input field
-        function updateApiBaseUrl() {
-            const baseUrlInput = document.getElementById('apiBaseUrl');
-            if (baseUrlInput && baseUrlInput.value.trim()) {
-                apiBaseUrl = baseUrlInput.value.trim();
-                localStorage.setItem('apiBaseUrl', apiBaseUrl);
+        // DOM Elements
+        const jwtTokenInput = document.getElementById('jwtToken');
+        const apiBaseUrlInput = document.getElementById('apiBaseUrl');
+        const saveTokenBtn = document.getElementById('saveTokenBtn');
+        const authStatus = document.getElementById('authStatus');
+        const productCards = document.querySelectorAll('.product-card');
+        const loadTestSeriesBtn = document.getElementById('loadTestSeriesBtn');
+        const loadMyTestSeriesBtn = document.getElementById('loadMyTestSeriesBtn');
+        const testSeriesSelection = document.getElementById('testSeriesSelection');
+        const myTestSeriesSection = document.getElementById('myTestSeriesSection');
+        const courseSelection = document.getElementById('courseSelection');
+        const testSeriesList = document.getElementById('testSeriesList');
+        const myTestSeriesList = document.getElementById('myTestSeriesList');
+        const courseList = document.getElementById('courseList');
+        const couponSection = document.getElementById('couponSection');
+        const couponCodeInput = document.getElementById('couponCode');
+        const applyCouponBtn = document.getElementById('applyCouponBtn');
+        const couponResult = document.getElementById('couponResult');
+        const orderSection = document.getElementById('orderSection');
+        const orderPreviewContent = document.getElementById('orderPreviewContent');
+        const createOrderBtn = document.getElementById('createOrderBtn');
+        const orderDetails = document.getElementById('orderDetails');
+        const orderResponse = document.getElementById('orderResponse');
+        const paymentSection = document.getElementById('paymentSection');
+        const paymentDetails = document.getElementById('paymentDetails');
+        const payNowBtn = document.getElementById('payNowBtn');
+        const paymentResponse = document.getElementById('paymentResponse');
+        const verificationSection = document.getElementById('verificationSection');
+        const verificationResponse = document.getElementById('verificationResponse');
+        const examSection = document.getElementById('examSection');
+        const examList = document.getElementById('examList');
+        const examActions = document.getElementById('examActions');
+        const startExamBtn = document.getElementById('startExamBtn');
+        const viewResultsBtn = document.getElementById('viewResultsBtn');
+        const successSection = document.getElementById('successSection');
+        const viewMyTestSeriesBtn = document.getElementById('viewMyTestSeriesBtn');
+        const takeExamsBtn = document.getElementById('takeExamsBtn');
+        const progressFill = document.getElementById('progressFill');
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            // Load saved values
+            if (token) {
+                jwtTokenInput.value = token;
+                showAuthStatus('Token loaded from storage', 'success');
             }
+            if (localStorage.getItem('apiBaseUrl')) {
+                apiBaseUrlInput.value = localStorage.getItem('apiBaseUrl');
+            }
+            
+            // Event listeners
+            saveTokenBtn.addEventListener('click', saveConfiguration);
+            productCards.forEach(card => card.addEventListener('click', selectProduct));
+            loadTestSeriesBtn.addEventListener('click', loadTestSeries);
+            loadMyTestSeriesBtn.addEventListener('click', loadMyTestSeries);
+            applyCouponBtn.addEventListener('click', applyCoupon);
+            createOrderBtn.addEventListener('click', createOrder);
+            payNowBtn.addEventListener('click', initiatePayment);
+            startExamBtn.addEventListener('click', startExam);
+            viewResultsBtn.addEventListener('click', viewResults);
+            viewMyTestSeriesBtn.addEventListener('click', loadMyTestSeries);
+            takeExamsBtn.addEventListener('click', loadExams);
+            
+            // Set initial progress
+            updateProgress(0);
+        });
+        
+        function saveConfiguration() {
+            const newToken = jwtTokenInput.value.trim();
+            const newBaseUrl = apiBaseUrlInput.value.trim();
+            
+            if (!newToken) {
+                showAuthStatus('Token cannot be empty', 'error');
+                return;
+            }
+            
+            if (!newBaseUrl) {
+                showAuthStatus('API Base URL cannot be empty', 'error');
+                return;
+            }
+            
+            token = newToken;
+            apiBaseUrl = newBaseUrl;
+            
+            localStorage.setItem('jwtToken', token);
+            localStorage.setItem('apiBaseUrl', apiBaseUrl);
+            
+            showAuthStatus('Configuration saved successfully!', 'success');
         }
         
-        // Initialize with stored values
-        window.addEventListener('load', () => {
-            const baseUrlInput = document.getElementById('apiBaseUrl');
-            if (localStorage.getItem('apiBaseUrl')) {
-                baseUrlInput.value = localStorage.getItem('apiBaseUrl');
+        function showAuthStatus(message, type) {
+            authStatus.textContent = message;
+            authStatus.className = `${type}-message`;
+            authStatus.classList.remove('hidden');
+            
+            setTimeout(() => {
+                authStatus.classList.add('hidden');
+            }, 3000);
+        }
+        
+        function selectProduct(e) {
+            // Remove selected class from all cards
+            productCards.forEach(card => card.classList.remove('selected'));
+            
+            // Add selected class to clicked card
+            e.currentTarget.classList.add('selected');
+            
+            selectedProduct = e.currentTarget.dataset.type;
+            
+            // Show appropriate selection section
+            if (selectedProduct === 'test_series') {
+                testSeriesSelection.classList.remove('hidden');
+                courseSelection.classList.add('hidden');
+                myTestSeriesSection.classList.add('hidden');
+            } else {
+                courseSelection.classList.remove('hidden');
+                testSeriesSelection.classList.add('hidden');
+                myTestSeriesSection.classList.add('hidden');
             }
-        });
-
-        // Initialize token input if exists
-        document.addEventListener('DOMContentLoaded', () => {
-            const tokenInput = document.getElementById('jwtToken');
-            if (token) {
-                tokenInput.value = token;
-                document.getElementById('tokenStatus').textContent = 'Token loaded from storage';
-                document.getElementById('tokenStatus').style.color = 'green';
-            }
-
-            // Save token button handler
-            document.getElementById('saveTokenBtn').addEventListener('click', () => {
-                const newToken = tokenInput.value.trim();
-                if (!newToken) {
-                    document.getElementById('tokenStatus').textContent = 'Token cannot be empty';
-                    document.getElementById('tokenStatus').style.color = 'red';
-                    return;
-                }
-                token = newToken;
-                localStorage.setItem('jwtToken', token);
-                
-                // Also update API base URL
-                updateApiBaseUrl();
-                
-                document.getElementById('tokenStatus').textContent = 'Token saved successfully!';
-                document.getElementById('tokenStatus').style.color = 'green';
-                
-                // Enable create order button
-                document.getElementById('createOrderBtn').disabled = false;
-            });
-        });
-
-        // View all courses
-        document.getElementById('viewCoursesBtn').addEventListener('click', async () => {
+            
+            updateProgress(20);
+        }
+        
+        async function loadTestSeries() {
             if (!token) {
-                document.getElementById('tokenStatus').textContent = 'Please enter and save a valid JWT token first';
-                document.getElementById('tokenStatus').style.color = 'red';
+                showAuthStatus('Please save your token first', 'error');
                 return;
             }
             
             try {
-                const response = await fetch(`${apiBaseUrl}/users/courses`, {
+                testSeriesList.innerHTML = '<p>Loading test series...</p>';
+                
+                const response = await fetch(`${apiBaseUrl}/test-series`, {
                     method: 'GET',
                     headers: {
                         'Content-Type': 'application/json',
@@ -223,100 +665,240 @@
                 
                 if (response.status === 401) {
                     localStorage.removeItem('jwtToken');
-                    document.getElementById('tokenStatus').textContent = 'Session expired. Please enter a new token.';
-                    document.getElementById('tokenStatus').style.color = 'red';
+                    showAuthStatus('Session expired. Please log in again.', 'error');
                     return;
                 }
                 
                 const data = await response.json();
                 
                 if (response.ok && data.success) {
-                    const coursesContainer = document.createElement('div');
-                    coursesContainer.id = 'coursesList';
-                    coursesContainer.style.marginTop = '20px';
-                    
                     if (data.data && Array.isArray(data.data) && data.data.length > 0) {
-                        coursesContainer.innerHTML = `
-                            <h3>Available Courses (${data.data.length}):</h3>
-                            <div style="max-height: 400px; overflow-y: auto;">
-                                ${data.data.map(course => `
-                                    <div style="border: 1px solid #ddd; margin: 10px 0; padding: 15px; border-radius: 5px;">
-                                        <h4>${course.title || course.name || 'Untitled Course'}</h4>
-                                        <p><strong>ID:</strong> ${course._id}</p>
-                                        <p><strong>Type:</strong> ${course.contentType || 'N/A'}</p>
-                                        <p><strong>Access Type:</strong> ${course.accessType || 'N/A'}</p>
-                                        <p><strong>Price:</strong> ₹${course.discountPrice || course.originalPrice || '0'}</p>
-                                        <p><strong>Classes:</strong> ${course.classes ? course.classes.length : 0}</p>
-                                        <p><strong>Description:</strong> ${course.description || 'No description'}</p>
-                                    </div>
-                                `).join('')}
+                        testSeriesList.innerHTML = data.data.map(ts => `
+                            <div class="test-series-item" data-id="${ts._id}" onclick="selectTestSeries('${ts._id}', ${JSON.stringify(ts)})">
+                                <h4>${ts.name}</h4>
+                                <p>${ts.description}</p>
+                                <div class="price-display">₹${ts.originalPrice || ts.finalPrice || 0}</div>
+                                ${ts.discount && ts.discount.value ? `<div class="discount-display">₹${ts.originalPrice || 0}</div>` : ''}
+                                <div>Tests: ${ts.testsCount || 0}</div>
+                                <div>Languages: ${ts.languages?.map(l => l.name).join(', ') || 'N/A'}</div>
+                                <div>Max Tests: ${ts.maxTests || 0}</div>
                             </div>
-                        `;
+                        `).join('');
                     } else {
-                        coursesContainer.innerHTML = '<h3>No courses available</h3>';
+                        testSeriesList.innerHTML = '<p>No test series available</p>';
                     }
-                    
-                    // Remove existing courses list if present
-                    const existingList = document.getElementById('coursesList');
-                    if (existingList) existingList.remove();
-                    
-                    document.querySelector('.container').appendChild(coursesContainer);
                 } else {
-                    alert('Failed to fetch courses: ' + (data.message || 'Unknown error'));
+                    testSeriesList.innerHTML = `<p class="error-message">Failed to load test series: ${data.message || 'Unknown error'}</p>`;
                 }
             } catch (error) {
-                console.error('Error fetching courses:', error);
-                alert('Error fetching courses. Check console for details.');
+                console.error('Error loading test series:', error);
+                testSeriesList.innerHTML = `<p class="error-message">Error loading test series: ${error.message}</p>`;
             }
-        });
-
-        // Create Order
-        // Toggle fields based on product type
-        document.querySelectorAll('input[name="itemType"]').forEach(r => {
-            r.addEventListener('change', () => {
-                const val = r.value;
-                document.getElementById('testSeriesFields').style.display = (val === 'test_series') ? 'block' : 'none';
-                document.getElementById('courseFields').style.display = (val === 'online_course') ? 'block' : 'none';
-            });
-        });
-
-        document.getElementById('createOrderBtn').addEventListener('click', async () => {
+        }
+        
+        async function loadMyTestSeries() {
             if (!token) {
-                document.getElementById('tokenStatus').textContent = 'Please enter and save a valid JWT token first';
-                document.getElementById('tokenStatus').style.color = 'red';
+                showAuthStatus('Please save your token first', 'error');
                 return;
             }
-
-            const selectedType = document.querySelector('input[name="itemType"]:checked').value;
-            const testSeriesId = document.getElementById('testSeriesId').value.trim();
-            const courseId = document.getElementById('courseId').value.trim();
-            const couponCode = document.getElementById('couponCode').value.trim();
-
-            // Validate required fields
-            if (selectedType === 'test_series' && !testSeriesId) {
-                alert('Please enter a test series ID');
-                return;
-            }
-            if (selectedType === 'online_course' && !courseId) {
-                alert('Please enter a course ID');
-                return;
-            }
-
+            
             try {
-                // Use different endpoints based on item type
-                let endpoint, payload;
-                if (selectedType === 'online_course') {
-                    endpoint = `${apiBaseUrl}/payment/courses/create-order`;
-                    payload = { courseId, couponCode: couponCode || undefined };
-                } else {
-                    endpoint = `${apiBaseUrl}/payment/create-order`;
-                    const items = [{ itemType: 'test_series', itemId: testSeriesId }];
-                    payload = { items, couponCode: couponCode || undefined };
+                myTestSeriesList.innerHTML = '<p>Loading your test series...</p>';
+                
+                const response = await fetch(`${apiBaseUrl}/users/test-series`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                
+                if (response.status === 401) {
+                    localStorage.removeItem('jwtToken');
+                    showAuthStatus('Session expired. Please log in again.', 'error');
+                    return;
                 }
-
-                console.log('Making request to:', endpoint);
-                console.log('Payload:', payload);
-
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    if (data.data && Array.isArray(data.data) && data.data.length > 0) {
+                        myTestSeriesList.innerHTML = data.data.map(ts => `
+                            <div class="test-series-item" data-id="${ts._id}">
+                                <h4>${ts.name}</h4>
+                                <p>${ts.description}</p>
+                                <div>Tests Taken: ${ts.testsTaken || 0}/${ts.testsCount || 0}</div>
+                                <div>Has Access: ${ts.hasAccess ? 'Yes' : 'No'}</div>
+                            </div>
+                        `).join('');
+                    } else {
+                        myTestSeriesList.innerHTML = '<p>No test series purchased</p>';
+                    }
+                } else {
+                    myTestSeriesList.innerHTML = `<p class="error-message">Failed to load your test series: ${data.message || 'Unknown error'}</p>`;
+                }
+            } catch (error) {
+                console.error('Error loading my test series:', error);
+                myTestSeriesList.innerHTML = `<p class="error-message">Error loading your test series: ${error.message}</p>`;
+            }
+        }
+        
+        async function loadExams() {
+            if (!token) {
+                showAuthStatus('Please save your token first', 'error');
+                return;
+            }
+            
+            try {
+                examList.innerHTML = '<p>Loading available exams...</p>';
+                
+                const response = await fetch(`${apiBaseUrl}/users/test-series`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                
+                if (response.status === 401) {
+                    localStorage.removeItem('jwtToken');
+                    showAuthStatus('Session expired. Please log in again.', 'error');
+                    return;
+                }
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    if (data.data && Array.isArray(data.data) && data.data.length > 0) {
+                        examList.innerHTML = data.data.map(ts => `
+                            <div class="exam-item">
+                                <h4>${ts.name}</h4>
+                                <p>${ts.description}</p>
+                                <div>Available Tests: ${ts.tests?.length || 0}</div>
+                                <div>Has Access: ${ts.hasAccess ? 'Yes' : 'No'}</div>
+                                ${ts.tests && Array.isArray(ts.tests) ? ts.tests.map(test => `
+                                    <div class="exam-item" style="margin-left: 20px;" data-test-id="${test._id}">
+                                        <h5>${test.testName}</h5>
+                                        <div>Questions: ${test.noOfQuestions || 0}</div>
+                                        <div class="exam-state state-${test.state || 'upcoming'}">${test.state || 'upcoming'}</div>
+                                    </div>
+                                `).join('') : ''}
+                            </div>
+                        `).join('');
+                    } else {
+                        examList.innerHTML = '<p>No exams available</p>';
+                    }
+                } else {
+                    examList.innerHTML = `<p class="error-message">Failed to load exams: ${data.message || 'Unknown error'}</p>`;
+                }
+                
+                examSection.classList.remove('hidden');
+            } catch (error) {
+                console.error('Error loading exams:', error);
+                examList.innerHTML = `<p class="error-message">Error loading exams: ${error.message}</p>`;
+            }
+        }
+        
+        function selectTestSeries(id, testSeries) {
+            selectedProductId = id;
+            selectedTestSeries = testSeries;
+            
+            // Remove selected class from all items
+            document.querySelectorAll('.test-series-item').forEach(item => {
+                item.classList.remove('selected');
+            });
+            
+            // Add selected class to clicked item
+            event.currentTarget.classList.add('selected');
+            
+            // Show coupon section
+            couponSection.classList.remove('hidden');
+            
+            // Update progress
+            updateProgress(40);
+        }
+        
+        async function applyCoupon() {
+            if (!selectedProductId) {
+                couponResult.innerHTML = '<p class="error-message">Please select a product first</p>';
+                return;
+            }
+            
+            const couponCode = couponCodeInput.value.trim();
+            if (!couponCode) {
+                couponResult.innerHTML = '<p class="error-message">Please enter a coupon code</p>';
+                return;
+            }
+            
+            try {
+                const payload = {
+                    couponCode: couponCode,
+                    itemType: selectedProduct,
+                    itemId: selectedProductId
+                };
+                
+                const response = await fetch(`${apiBaseUrl}/coupons/validate`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify(payload)
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    couponResult.innerHTML = `
+                        <div class="success-message">
+                            <p>Coupon applied successfully! Discount: ${data.discountPercentage || data.discountAmount || 0}%</p>
+                        </div>
+                    `;
+                } else {
+                    couponResult.innerHTML = `
+                        <div class="error-message">
+                            <p>Invalid coupon: ${data.message || 'Coupon not valid'}</p>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('Error applying coupon:', error);
+                couponResult.innerHTML = `
+                    <div class="error-message">
+                        <p>Error applying coupon: ${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+        
+        async function createOrder() {
+            if (!selectedProductId) {
+                showAuthStatus('Please select a product first', 'error');
+                return;
+            }
+            
+            try {
+                let endpoint, payload;
+                
+                if (selectedProduct === 'test_series') {
+                    endpoint = `${apiBaseUrl}/payment/create-order`;
+                    const items = [{ itemType: 'test_series', itemId: selectedProductId }];
+                    payload = { 
+                        items, 
+                        couponCode: couponCodeInput.value.trim() || undefined 
+                    };
+                } else {
+                    endpoint = `${apiBaseUrl}/payment/courses/create-order`;
+                    payload = { 
+                        courseId: selectedProductId, 
+                        couponCode: couponCodeInput.value.trim() || undefined 
+                    };
+                }
+                
+                // Show loading state
+                createOrderBtn.innerHTML = '<span class="loading"></span> Creating Order...';
+                createOrderBtn.disabled = true;
+                
                 const response = await fetch(endpoint, {
                     method: 'POST',
                     headers: {
@@ -325,89 +907,90 @@
                     },
                     body: JSON.stringify(payload)
                 });
-
-                console.log('Response status:', response.status);
-
+                
                 if (response.status === 401) {
                     localStorage.removeItem('jwtToken');
-                    document.getElementById('tokenStatus').textContent = 'Session expired. Please enter a new token.';
-                    document.getElementById('tokenStatus').style.color = 'red';
+                    showAuthStatus('Session expired. Please log in again.', 'error');
+                    createOrderBtn.innerHTML = 'Create Order';
+                    createOrderBtn.disabled = false;
                     return;
                 }
-
-                // Check if response is JSON or HTML
-                const contentType = response.headers.get('content-type');
-                if (!contentType || !contentType.includes('application/json')) {
-                    const textResponse = await response.text();
-                    console.error('Non-JSON response:', textResponse);
-                    alert('Server returned an unexpected response. Please check the console for details.');
-                    return;
-                }
-
+                
                 const data = await response.json();
                 
                 if (response.ok && data.success) {
-                    orderData = data.order || data.data; // Handle both response formats
-                    document.getElementById('orderResponse').textContent = JSON.stringify(orderData, null, 2);
-                    document.getElementById('orderDetails').style.display = 'block';
-                    document.getElementById('paymentSection').style.display = 'block';
-                    document.getElementById('paymentSection').scrollIntoView({ behavior: 'smooth' });
+                    orderData = data.order || data.data;
+                    
+                    // Display order preview
+                    orderPreviewContent.innerHTML = `
+                        <div class="success-message">
+                            <p><strong>Product:</strong> ${selectedProduct === 'test_series' ? selectedTestSeries?.name : selectedCourse?.title}</p>
+                            <p><strong>Original Price:</strong> ₹${orderData.originalAmount || orderData.amount}</p>
+                            <p><strong>Final Price:</strong> ₹${orderData.finalAmount || orderData.amount}</p>
+                            <p><strong>Discount:</strong> ₹${(orderData.originalAmount || orderData.amount) - (orderData.finalAmount || orderData.amount)}</p>
+                        </div>
+                    `;
+                    
+                    orderResponse.textContent = JSON.stringify(orderData, null, 2);
+                    orderDetails.classList.remove('hidden');
+                    orderSection.classList.remove('hidden');
+                    
+                    updateProgress(60);
+                    
+                    // Show payment section
+                    paymentSection.classList.remove('hidden');
+                    
+                    // Display payment details
+                    paymentDetails.innerHTML = `
+                        <div class="success-message">
+                            <p><strong>Order ID:</strong> ${orderData.orderId || orderData.id}</p>
+                            <p><strong>Amount:</strong> ₹${orderData.amount}</p>
+                            <p><strong>Currency:</strong> ${orderData.currency || 'INR'}</p>
+                        </div>
+                    `;
                 } else {
-                    console.error('API Error:', data);
-                    alert('Failed to create order: ' + (data.message || 'Unknown error'));
+                    showAuthStatus(`Failed to create order: ${data.message || 'Unknown error'}`, 'error');
                 }
+                
+                createOrderBtn.innerHTML = 'Create Order';
+                createOrderBtn.disabled = false;
             } catch (error) {
                 console.error('Error creating order:', error);
-                alert('Error creating order. Check console for details. Error: ' + error.message);
+                showAuthStatus(`Error creating order: ${error.message}`, 'error');
+                createOrderBtn.innerHTML = 'Create Order';
+                createOrderBtn.disabled = false;
             }
-        });
-
-        // Handle Payment
-        document.getElementById('payNowBtn').addEventListener('click', () => {
+        }
+        
+        function initiatePayment() {
             if (!orderData) {
-                alert('Please create an order first');
+                showAuthStatus('Please create an order first', 'error');
                 return;
             }
-
-            if (!token) {
-                document.getElementById('tokenStatus').textContent = 'Please enter and save a valid JWT token first';
-                document.getElementById('tokenStatus').style.color = 'red';
-                return;
-            }
-
-            // Updated to handle the correct response format from your API
-            const orderId = orderData.orderId || orderData.id;
-            const amount = orderData.amountInPaise || orderData.amount * 100; // Convert to paise if needed
-            const currency = orderData.currency || 'INR';
-
+            
             const options = {
-                key: "rzp_test_RPLRzNCjuNmGdU", // Enter your Razorpay key here
-                amount: amount,
-                currency: currency,
-                name: orderData.name || "Brain Buzz",
-                description: orderData.description || "Test Series or Online Course Purchase",
-                order_id: orderId,
+                key: "rzp_test_RPLRzNCjuNmGdU", // Replace with your Razorpay key
+                amount: orderData.amountInPaise || (orderData.amount * 100),
+                currency: orderData.currency || 'INR',
+                name: "Brain Buzz",
+                description: selectedProduct === 'test_series' ? selectedTestSeries?.name : selectedCourse?.title,
+                order_id: orderData.orderId || orderData.id,
                 handler: async function (response) {
-                    const paymentResponse = document.getElementById('paymentResponse');
                     paymentResponse.innerHTML = `
-                        <h3>Payment Successful!</h3>
-                        <p>Payment ID: ${response.razorpay_payment_id}</p>
-                        <p>Order ID: ${response.razorpay_order_id}</p>
-                        <p>Signature: ${response.razorpay_signature}</p>
-                        <p>Verifying payment...</p>
+                        <div class="success-message">
+                            <h3>Payment Successful!</h3>
+                            <p>Payment ID: ${response.razorpay_payment_id}</p>
+                            <p>Order ID: ${response.razorpay_order_id}</p>
+                            <p>Verifying payment...</p>
+                        </div>
                     `;
-
+                    
                     try {
-                        // Use different verification endpoints based on the original creation endpoint
-                        const selectedType = document.querySelector('input[name="itemType"]:checked').value;
-                        let verifyEndpoint;
-                        if (selectedType === 'online_course') {
-                            verifyEndpoint = `${apiBaseUrl}/payment/courses/verify`;
-                        } else {
-                            verifyEndpoint = `${apiBaseUrl}/payment/verify`;
-                        }
-
-                        // Send the exact parameters that the backend expects
+                        // Verify payment
+                        const verifyEndpoint = selectedProduct === 'test_series' ? 
+                            `${apiBaseUrl}/payment/verify` : 
+                            `${apiBaseUrl}/payment/courses/verify`;
+                        
                         const verifyResponse = await fetch(verifyEndpoint, {
                             method: 'POST',
                             headers: {
@@ -420,55 +1003,47 @@
                                 razorpay_signature: response.razorpay_signature
                             })
                         });
-
+                        
                         if (verifyResponse.status === 401) {
                             localStorage.removeItem('jwtToken');
-                            document.getElementById('tokenStatus').textContent = 'Session expired. Please enter a new token.';
-                            document.getElementById('tokenStatus').style.color = 'red';
+                            showAuthStatus('Session expired. Please log in again.', 'error');
                             return;
                         }
-
-                        const verifyData = await verifyResponse.json();
-                        const verificationSection = document.getElementById('verificationSection');
-                        const verificationResponse = document.getElementById('verificationResponse');
                         
-                        if (verifyData.success) {
+                        const verifyData = await verifyResponse.json();
+                        
+                        if (verifyResponse.ok && verifyData.success) {
                             verificationResponse.innerHTML = `
-                                <div style="color: green;">
-                                    <h3>Payment Verified Successfully!</h3>
-                                    <p>Order ID: ${verifyData.data?.orderId || verifyData.orderId}</p>
-                                    <p>Payment ID: ${verifyData.data?.paymentId || verifyData.paymentId}</p>
-                                    <p>You now have access to the purchased item.</p>
+                                <div class="success-message">
+                                    <h3>✅ Payment Verified Successfully!</h3>
+                                    <p><strong>Order ID:</strong> ${verifyData.data?.orderId || verifyData.orderId}</p>
+                                    <p><strong>Payment ID:</strong> ${verifyData.data?.paymentId || verifyData.paymentId}</p>
+                                    <p><strong>Status:</strong> ${verifyData.data?.status || verifyData.status}</p>
+                                    <p>You now have access to your purchased ${selectedProduct.replace('_', ' ')}. 🎉</p>
                                 </div>
                             `;
+                            
+                            verificationSection.classList.remove('hidden');
+                            successSection.classList.remove('hidden');
+                            updateProgress(100);
                         } else {
                             verificationResponse.innerHTML = `
-                                <div style="color: red;">
-                                    <h3>Verification Failed</h3>
-                                    <p>${verifyData.message || 'Unknown error'}</p>
+                                <div class="error-message">
+                                    <h3>❌ Verification Failed</h3>
+                                    <p>${verifyData.message || 'Payment verification failed'}</p>
                                 </div>
                             `;
-                        }
-                        verificationSection.style.display = 'block';
-                        verificationSection.scrollIntoView({ behavior: 'smooth' });
-                        
-                        // Show course access section after successful payment verification
-                        if (verifyData.success) {
-                            document.getElementById('courseAccessSection').style.display = 'block';
-                            // Pre-fill course ID if it was a course purchase
-                            if (selectedType === 'online_course' && courseId) {
-                                document.getElementById('accessCourseId').value = courseId;
-                            }
+                            verificationSection.classList.remove('hidden');
                         }
                     } catch (error) {
                         console.error('Error verifying payment:', error);
-                        document.getElementById('verificationResponse').innerHTML = `
-                            <div style="color: red;">
-                                <h3>Error verifying payment</h3>
-                                <p>Check console for details</p>
+                        verificationResponse.innerHTML = `
+                            <div class="error-message">
+                                <h3>❌ Error verifying payment</h3>
+                                <p>${error.message}</p>
                             </div>
                         `;
-                        document.getElementById('verificationSection').style.display = 'block';
+                        verificationSection.classList.remove('hidden');
                     }
                 },
                 prefill: {
@@ -483,78 +1058,50 @@
                     color: "#4CAF50"
                 }
             };
-
+            
             const rzp = new Razorpay(options);
+            
             rzp.on('payment.failed', function (response) {
-                document.getElementById('paymentResponse').innerHTML = `
-                    <div style="color: red;">
-                        <h3>Payment Failed</h3>
-                        <p>Error: ${response.error.description || 'Unknown error'}</p>
-                        <p>Code: ${response.error.code || 'N/A'}</p>
+                paymentResponse.innerHTML = `
+                    <div class="error-message">
+                        <h3>❌ Payment Failed</h3>
+                        <p><strong>Error:</strong> ${response.error.description || 'Unknown error'}</p>
+                        <p><strong>Code:</strong> ${response.error.code || 'N/A'}</p>
+                        <p>Please try again or contact support.</p>
                     </div>
                 `;
             });
-
-            rzp.open();
-        });
-        
-        // Test Course Access
-        document.getElementById('testAccessBtn').addEventListener('click', async () => {
-            const accessCourseId = document.getElementById('accessCourseId').value.trim();
-            const accessClassId = document.getElementById('accessClassId').value.trim();
             
-            if (!accessCourseId) {
-                alert('Please enter a course ID');
+            rzp.open();
+        }
+        
+        function startExam() {
+            if (!selectedExam) {
+                showAuthStatus('Please select an exam first', 'error');
                 return;
             }
             
-            const accessResponse = document.getElementById('accessResponse');
-            accessResponse.innerHTML = '<p>Testing course access...</p>';
-            
-            try {
-                let endpoint;
-                if (accessClassId) {
-                    endpoint = `${apiBaseUrl}/users/courses/${accessCourseId}/classes/${accessClassId}`;
-                } else {
-                    endpoint = `${apiBaseUrl}/users/courses/${accessCourseId}`;
-                }
-                
-                const response = await fetch(endpoint, {
-                    method: 'GET',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    }
-                });
-                
-                const data = await response.json();
-                
-                if (response.ok && data.success) {
-                    accessResponse.innerHTML = `
-                        <div style="color: green;">
-                            <h3>Access Test Successful!</h3>
-                            <pre>${JSON.stringify(data, null, 2)}</pre>
-                        </div>
-                    `;
-                } else {
-                    accessResponse.innerHTML = `
-                        <div style="color: orange;">
-                            <h3>Access Test Result:</h3>
-                            <p>Status: ${response.status}</p>
-                            <pre>${JSON.stringify(data, null, 2)}</pre>
-                        </div>
-                    `;
-                }
-            } catch (error) {
-                console.error('Error testing access:', error);
-                accessResponse.innerHTML = `
-                    <div style="color: red;">
-                        <h3>Error testing access</h3>
-                        <p>${error.message}</p>
-                    </div>
-                `;
+            // Redirect to exam taking page
+            window.location.href = `exam.html?seriesId=${selectedExam.seriesId}&testId=${selectedExam.testId}`;
+        }
+        
+        function viewResults() {
+            if (!selectedExam) {
+                showAuthStatus('Please select an exam first', 'error');
+                return;
             }
-        });
+            
+            // Redirect to results page
+            window.location.href = `results.html?seriesId=${selectedExam.seriesId}&testId=${selectedExam.testId}`;
+        }
+        
+        function updateProgress(percent) {
+            progressFill.style.width = percent + '%';
+        }
+        
+        // Global functions for onclick handlers
+        window.selectTestSeries = selectTestSeries;
+        window.selectCourse = selectCourse;
     </script>
 </body>
 </html>

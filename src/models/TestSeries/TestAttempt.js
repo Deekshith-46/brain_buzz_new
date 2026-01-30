@@ -28,7 +28,16 @@ const testAttemptSchema = new mongoose.Schema({
   percentage: Number,
   rank: Number,        // User's rank in this test
 
-  resultGenerated: { type: Boolean, default: false }
+  resultGenerated: { type: Boolean, default: false },
+  
+  status: { 
+    type: String, 
+    enum: ['IN_PROGRESS', 'SUBMITTED'], 
+    default: 'IN_PROGRESS' 
+  }
 }, { timestamps: true });
+
+// Compound unique index to prevent duplicate attempts per user+test
+testAttemptSchema.index({ user: 1, testSeries: 1, testId: 1 }, { unique: true });
 
 module.exports = mongoose.model('TestAttempt', testAttemptSchema);
