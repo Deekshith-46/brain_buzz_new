@@ -19,12 +19,30 @@ exports.registerUser = async (req, res) => {
       dateOfBirth,
       state,
       address,
+      category,
       password,
       isActive,
     } = req.body;
 
+    // Validate required fields
     if (!password || password.length < 6) {
       return res.status(400).json({ message: 'Password must be at least 6 characters long' });
+    }
+
+    // Validate category (mandatory for cutoff calculation)
+    if (!category) {
+      return res.status(400).json({
+        success: false,
+        message: 'Category is required'
+      });
+    }
+
+    const allowedCategories = ['GENERAL', 'OBC', 'SC', 'ST'];
+    if (!allowedCategories.includes(category)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid category. Must be one of: GENERAL, OBC, SC, ST'
+      });
     }
 
     const existingByEmail = await User.findOne({ email });
@@ -48,6 +66,7 @@ exports.registerUser = async (req, res) => {
       dateOfBirth,
       state,
       address,
+      category,
       password: hashedPassword,
       isActive,
     });
@@ -67,6 +86,8 @@ exports.registerUser = async (req, res) => {
         dateOfBirth: user.dateOfBirth,
         state: user.state,
         address: user.address,
+        category: user.category,
+        isCategoryVerified: user.isCategoryVerified,
         isActive: user.isActive,
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,

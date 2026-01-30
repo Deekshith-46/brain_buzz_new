@@ -50,6 +50,15 @@ const userSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    category: {
+      type: String,
+      enum: ['GENERAL', 'OBC', 'SC', 'ST'],
+      required: true
+    },
+    isCategoryVerified: {
+      type: Boolean,
+      default: false
+    },
     isActive: {
       type: Boolean,
       default: true,

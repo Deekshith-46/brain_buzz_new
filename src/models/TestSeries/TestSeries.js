@@ -100,6 +100,11 @@ const testSchema = new mongoose.Schema(
     resultPublishTime: {
       type: Date,
     },
+    durationInSeconds: {
+      type: Number,
+      required: true,
+      default: 3600  // 1 hour default
+    },
     sections: [sectionSchema],
   },
   { _id: true }

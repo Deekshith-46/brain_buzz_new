@@ -73,7 +73,11 @@ exports.startTest = async (req, res) => {
         return res.status(200).json({
           success: true,
           message: 'Test attempt resumed',
-          data: userAttempt
+          data: {
+            attemptId: userAttempt._id,
+            startedAt: userAttempt.startedAt,
+            status: userAttempt.status
+          }
         });
       }
       
@@ -117,6 +121,37 @@ exports.startTest = async (req, res) => {
     // If we reach here, userAttempt is null (no existing attempt)
     // So we can safely create a new attempt
 
+    // Calculate total marks for the test
+    const totalMarks = test.sections.reduce((total, section) => {
+      const sectionTotal = section.questions.reduce((sectionTotal, question) => {
+        return sectionTotal + (question.marks || 1);
+      }, 0);
+      return total + sectionTotal;
+    }, 0);
+
+    // Create test snapshot for performance (CBT-compliant - fully self-contained)
+    const testSnapshot = {
+      testName: test.testName,
+      durationInSeconds: test.durationInSeconds || 3600,
+      positiveMarks: test.positiveMarks,
+      negativeMarks: test.negativeMarks,
+      totalMarks: totalMarks,
+      sections: test.sections.map(section => ({
+        _id: section._id.toString(),
+        title: section.title,
+        questions: section.questions.map(q => ({
+          _id: q._id.toString(),
+          questionNumber: q.questionNumber,
+          questionText: q.questionText,  // Needed for exam display
+          options: q.options,           // Needed for exam display
+          correctOptionIndex: q.correctOptionIndex,  // Essential for scoring
+          explanation: q.explanation,   // Needed for result analysis
+          marks: q.marks,
+          negativeMarks: q.negativeMarks
+        }))
+      }))
+    };
+
     // Create new test attempt atomically
     try {
       const testAttempt = await TestAttempt.create({
@@ -125,13 +160,18 @@ exports.startTest = async (req, res) => {
         testId: testId,
         startedAt: new Date(),
         responses: [],
+        testSnapshot: testSnapshot,
         status: 'IN_PROGRESS'
       });
 
       return res.status(201).json({
         success: true,
         message: 'Test started successfully',
-        data: testAttempt
+        data: {
+          attemptId: testAttempt._id,
+          startedAt: testAttempt.startedAt,
+          status: testAttempt.status
+        }
       });
     } catch (error) {
       // Handle duplicate key error (11000)
@@ -159,12 +199,26 @@ exports.startTest = async (req, res) => {
 exports.submitAnswer = async (req, res) => {
   try {
     const { seriesId, testId } = req.params;
-    const { sectionId, questionId, selectedOption, timeTaken } = req.body;
+    const { sectionId, questionId, selectedOption, timeTaken, markedForReview } = req.body;
     const userId = req.user._id;
 
     // VALIDATION PHASE - Do all validation BEFORE any DB updates
     
-    // 1. Validate test series and test exist and get question data
+    // 1. Validate test series and test exist and get question data (using snapshot for performance)
+    const testAttempt = await TestAttempt.findOne({
+      user: userId,
+      testSeries: seriesId,
+      testId: testId
+    });
+    
+    if (!testAttempt || !testAttempt.testSnapshot) {
+      return res.status(500).json({
+        success: false,
+        message: 'Test snapshot not found'
+      });
+    }
+    
+    const testSnapshot = testAttempt.testSnapshot;
     const testSeries = await TestSeries.findById(seriesId);
     if (!testSeries) {
       return res.status(404).json({
@@ -181,19 +235,30 @@ exports.submitAnswer = async (req, res) => {
       });
     }
 
-    // 2. Find the section and question
+    // 2. Find the section and question (using snapshot for correctness calculation)
     let question = null;
     let section = null;
-    for (const sec of test.sections) {
-      const q = sec.questions.id(questionId);
+    for (const sec of testSnapshot.sections) {
+      const q = sec.questions.find(sq => sq._id === questionId);
       if (q) {
         question = q;
         section = sec;
         break;
       }
     }
+    
+    // Also get full question data for validation
+    let fullQuestion = null;
+    for (const sec of test.sections) {
+      const q = sec.questions.id(questionId);
+      if (q) {
+        fullQuestion = q;
+        if (!section) section = sec;
+        break;
+      }
+    }
 
-    if (!question) {
+    if (!fullQuestion) {
       return res.status(404).json({
         success: false,
         message: 'Question not found'
@@ -201,15 +266,20 @@ exports.submitAnswer = async (req, res) => {
     }
 
     // 3. Validate selected option BEFORE any DB operations
-    if (selectedOption < 0 || selectedOption >= question.options.length) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid option selected'
-      });
+    // Allow null/undefined for clearing response
+    if (selectedOption !== null && selectedOption !== undefined) {
+      if (selectedOption < 0 || selectedOption >= fullQuestion.options.length) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid option selected'
+        });
+      }
     }
 
-    // 4. Compute correctness BEFORE any DB operations
-    const isCorrect = question.correctOptionIndex === selectedOption;
+    // 4. Compute correctness using snapshot data (CBT-compliant)
+    // Only compute correctness for attempted questions
+    const isCorrect = selectedOption !== null && selectedOption !== undefined ? 
+      question.correctOptionIndex === selectedOption : null;  // null for unattempted
 
     // 5. Validate user access
     const testIndex = testSeries.tests.findIndex(t => t._id.toString() === testId);
@@ -264,9 +334,12 @@ exports.submitAnswer = async (req, res) => {
     const newResponse = {
       sectionId,
       questionId,
-      selectedOption,
-      isCorrect,
-      timeTaken
+      selectedOption: selectedOption !== undefined ? selectedOption : null,
+      isCorrect: isCorrect,  // Store null for unattempted, true/false for attempted
+      timeTaken,
+      markedForReview: markedForReview || false,
+      visited: true,  // Mark as visited when user interacts
+      attempted: selectedOption !== null && selectedOption !== undefined  // Only attempted if option selected
     };
 
     // Use atomic update to handle response submission
@@ -298,9 +371,12 @@ exports.submitAnswer = async (req, res) => {
         },
         {
           $set: { 
-            'responses.$[elem].selectedOption': selectedOption,
-            'responses.$[elem].isCorrect': isCorrect,
-            'responses.$[elem].timeTaken': timeTaken
+            'responses.$[elem].selectedOption': selectedOption !== undefined ? selectedOption : null,
+            'responses.$[elem].isCorrect': isCorrect,  // Store null for unattempted
+            'responses.$[elem].timeTaken': timeTaken,
+            'responses.$[elem].markedForReview': markedForReview || false,
+            'responses.$[elem].visited': true,
+            'responses.$[elem].attempted': selectedOption !== null && selectedOption !== undefined
           }
         },
         {
@@ -311,14 +387,12 @@ exports.submitAnswer = async (req, res) => {
     }
 
     // All validation completed above - proceed with atomic update
-
+    
+    // Security: Do NOT return correctness in response to prevent cheating
     return res.status(200).json({
       success: true,
-      message: 'Answer submitted successfully',
-      data: {
-        isCorrect
-        // NOTE: Do NOT return correctOption immediately to prevent cheating
-      }
+      message: 'Answer submitted successfully'
+      // isCorrect is only revealed in result analysis after submission
     });
   } catch (error) {
     console.error('Error submitting answer:', error);
@@ -446,18 +520,22 @@ exports.submitTest = async (req, res) => {
 
     // All validations completed above
 
-    // Calculate results
+    // Calculate results (CBT-compliant - only attempted questions count)
     const totalQuestions = test.sections.reduce((total, section) => {
       return total + (section.questions ? section.questions.length : 0);
     }, 0);
 
-    const correct = finalTestAttempt.responses.filter(r => r.isCorrect).length;
-    const incorrect = finalTestAttempt.responses.filter(r => r.isCorrect === false).length;
-    const unattempted = totalQuestions - (correct + incorrect);
+    const attemptedResponses = finalTestAttempt.responses.filter(r => r.attempted);
+    const correct = attemptedResponses.filter(r => r.isCorrect).length;
+    const incorrect = attemptedResponses.filter(r => !r.isCorrect).length;
+    const unattempted = totalQuestions - attemptedResponses.length;
 
-    // Calculate score
+    // Calculate score (CBT-compliant - only attempted questions scored)
     let score = 0;
     for (const response of finalTestAttempt.responses) {
+      // Only score attempted questions
+      if (!response.attempted) continue;
+      
       // Find the question to get its marks
       let question = null;
       for (const section of test.sections) {
@@ -477,16 +555,16 @@ exports.submitTest = async (req, res) => {
       }
     }
 
-    // Calculate accuracy
-    const accuracy = correct + incorrect > 0 ? (correct / (correct + incorrect)) * 100 : 0;
+    // Calculate accuracy (CBT-compliant - only attempted questions)
+    const accuracy = attemptedResponses.length > 0 ? (correct / attemptedResponses.length) * 100 : 0;
 
-    // Calculate time taken and speed
+    // Calculate time taken and speed (CBT-standard: attempted questions per minute)
     const timeTakenMs = finalTestAttempt.submittedAt ? 
       new Date(finalTestAttempt.submittedAt).getTime() - new Date(finalTestAttempt.startedAt).getTime() :
       new Date().getTime() - new Date(finalTestAttempt.startedAt).getTime();
     
     const timeTakenMinutes = timeTakenMs / (1000 * 60);
-    const speed = timeTakenMinutes > 0 ? (correct + incorrect) / timeTakenMinutes : 0;
+    const speed = timeTakenMinutes > 0 ? attemptedResponses.length / timeTakenMinutes : 0;
 
     // Update test attempt with calculated results (don't overwrite atomic fields)
     finalTestAttempt.score = score;
@@ -495,16 +573,20 @@ exports.submitTest = async (req, res) => {
     finalTestAttempt.unattempted = unattempted;
     finalTestAttempt.accuracy = accuracy;
     finalTestAttempt.speed = speed;
-    finalTestAttempt.percentage = totalQuestions > 0 ? (correct / totalQuestions) * 100 : 0;
+    finalTestAttempt.percentage = totalQuestions > 0 ? (correct / totalQuestions) * 100 : 0;  // Based on total questions, not attempted
     // submittedAt and resultGenerated already set by atomic update
 
     await finalTestAttempt.save();
 
-    // Return response immediately for better UX
+    // Return minimal response (CBT security: no internal data exposed)
     const response = res.status(200).json({
       success: true,
       message: 'Test submitted successfully',
-      data: finalTestAttempt
+      data: {
+        attemptId: finalTestAttempt._id,
+        score: finalTestAttempt.score,
+        status: finalTestAttempt.status
+      }
     });
 
     // Update ranking asynchronously to improve performance
@@ -525,6 +607,126 @@ exports.submitTest = async (req, res) => {
       message: 'Server error',
       error: error.message
     });
+  }
+}
+
+// Helper function to calculate maximum possible score from snapshot
+const calculateMaxScore = (testSnapshot) => {
+  if (!testSnapshot.sections) return 0;
+  
+  let maxScore = 0;
+  for (const section of testSnapshot.sections) {
+    if (section.questions) {
+      for (const question of section.questions) {
+        maxScore += question.marks || 1; // Default to 1 mark if not specified
+      }
+    }
+  }
+  return maxScore;
+};
+
+// Helper function for auto-submit on time expiry
+const autoSubmitOnTimeExpiry = async (attemptId, seriesId, testId) => {
+  try {
+    // Check if attempt still needs submission
+    const testAttempt = await TestAttempt.findById(attemptId);
+    if (!testAttempt || testAttempt.resultGenerated || testAttempt.status !== 'IN_PROGRESS') {
+      return;
+    }
+
+    // Atomically submit the test
+    const updatedAttempt = await TestAttempt.findOneAndUpdate(
+      {
+        _id: attemptId,
+        resultGenerated: { $ne: true },
+        status: 'IN_PROGRESS'
+      },
+      { 
+        $set: { 
+          resultGenerated: true, 
+          submittedAt: new Date(),
+          status: 'SUBMITTED'
+        }
+      },
+      { new: true }
+    );
+
+    if (!updatedAttempt) {
+      return; // Already submitted by another process
+    }
+
+    // Calculate results (using snapshot for performance)
+    const testSnapshot = updatedAttempt.testSnapshot;
+    if (!testSnapshot) {
+      throw new Error('Test snapshot not found for auto-submit');
+    }
+    
+    const totalQuestions = testSnapshot.sections.reduce((total, section) => {
+      return total + (section.questions ? section.questions.length : 0);
+    }, 0);
+
+    // CBT-compliant scoring: Only count attempted questions
+    const attemptedResponses = updatedAttempt.responses.filter(r => r.attempted);
+    const correct = attemptedResponses.filter(r => r.isCorrect).length;
+    const incorrect = attemptedResponses.filter(r => !r.isCorrect).length;
+    const unattempted = totalQuestions - attemptedResponses.length;
+
+    // Calculate score (CBT-compliant - only attempted questions scored)
+    let score = 0;
+    for (const response of updatedAttempt.responses) {
+      // Only score attempted questions
+      if (!response.attempted) continue;
+      
+      let question = null;
+      for (const section of testSnapshot.sections) {
+        const q = section.questions.find(sq => sq._id === response.questionId);
+        if (q) {
+          question = q;
+          break;
+        }
+      }
+
+      if (question) {
+        if (response.isCorrect) {
+          score += question.marks || testSnapshot.positiveMarks || 1;
+        } else {
+          score -= Math.abs(question.negativeMarks || testSnapshot.negativeMarks || 0);
+        }
+      }
+    }
+
+    const accuracy = attemptedResponses.length > 0 ? (correct / attemptedResponses.length) * 100 : 0;
+    
+    const timeTakenMs = updatedAttempt.submittedAt ? 
+      new Date(updatedAttempt.submittedAt).getTime() - new Date(updatedAttempt.startedAt).getTime() :
+      new Date().getTime() - new Date(updatedAttempt.startedAt).getTime();
+    
+    const timeTakenMinutes = timeTakenMs / (1000 * 60);
+    const speed = timeTakenMinutes > 0 ? attemptedResponses.length / timeTakenMinutes : 0;
+
+    // Update attempt with calculated results
+    updatedAttempt.score = score;
+    updatedAttempt.correct = correct;
+    updatedAttempt.incorrect = incorrect;
+    updatedAttempt.unattempted = unattempted;
+    updatedAttempt.accuracy = accuracy;
+    updatedAttempt.speed = speed;
+    updatedAttempt.percentage = totalQuestions > 0 ? (correct / totalQuestions) * 100 : 0;
+
+    await updatedAttempt.save();
+
+    // Update ranking asynchronously
+    setImmediate(async () => {
+      try {
+        await updateRanking(seriesId, testId, updatedAttempt.user, score, accuracy);
+      } catch (error) {
+        console.error('Error updating ranking in auto-submit:', error);
+      }
+    });
+
+    console.log(`Auto-submitted test attempt ${attemptId} due to time expiry`);
+  } catch (error) {
+    console.error('Error in auto-submit on time expiry:', error);
   }
 };
 
@@ -600,20 +802,12 @@ exports.getResultAnalysis = async (req, res) => {
       });
     }
 
-    // Find the test series and the specific test
-    const testSeries = await TestSeries.findById(testAttempt.testSeries);
-    if (!testSeries) {
-      return res.status(404).json({
+    // Use snapshot for immutable results (CBT rule: results must not change)
+    const testSnapshot = testAttempt.testSnapshot;
+    if (!testSnapshot) {
+      return res.status(500).json({
         success: false,
-        message: 'Test series not found'
-      });
-    }
-
-    const test = testSeries.tests.id(testAttempt.testId);
-    if (!test) {
-      return res.status(404).json({
-        success: false,
-        message: 'Test not found in this series'
+        message: 'Test snapshot not found - results cannot be generated'
       });
     }
 
@@ -634,24 +828,26 @@ exports.getResultAnalysis = async (req, res) => {
       user: userId
     });
 
-    // Get cutoff if exists
+    // Get cutoff from live data (metadata, not result content)
     const cutoff = await Cutoff.findOne({ testId: testAttempt.testId });
 
-    // Section-wise analysis
+    // Section-wise analysis (CBT-compliant - only attempted questions)
     const sectionAnalysis = [];
     const sectionAccuracy = {};
 
-    for (const section of test.sections) {
+    for (const section of testSnapshot.sections) {
       const sectionResponses = testAttempt.responses.filter(
         r => r.sectionId === section._id.toString()
       );
-
-      const sectionCorrect = sectionResponses.filter(r => r.isCorrect).length;
-      const sectionIncorrect = sectionResponses.filter(r => r.isCorrect === false).length;
+      
+      // Only count attempted responses for scoring
+      const attempted = sectionResponses.filter(r => r.attempted);
+      const sectionCorrect = attempted.filter(r => r.isCorrect).length;
+      const sectionIncorrect = attempted.filter(r => !r.isCorrect).length;
       const sectionTotal = section.questions ? section.questions.length : 0;
-      const sectionUnattempted = sectionTotal - (sectionCorrect + sectionIncorrect);
-      const sectionAccuracyVal = sectionCorrect + sectionIncorrect > 0 ? 
-        (sectionCorrect / (sectionCorrect + sectionIncorrect)) * 100 : 0;
+      const sectionUnattempted = sectionTotal - attempted.length;
+      const sectionAccuracyVal = attempted.length > 0 ? 
+        (sectionCorrect / attempted.length) * 100 : 0;
 
       sectionAccuracy[section.title] = sectionAccuracyVal;
 
@@ -665,7 +861,7 @@ exports.getResultAnalysis = async (req, res) => {
       });
     }
 
-    // Find strongest and weakest sections
+    // Find strongest and weakest sections (industry-standard logic)
     let strongestArea = '';
     let weakestArea = '';
     let maxAccuracy = -1;
@@ -681,14 +877,21 @@ exports.getResultAnalysis = async (req, res) => {
         weakestArea = sectionName;
       }
     }
+    
+    // Handle edge case: all sections have equal accuracy
+    const accuracyValues = Object.values(sectionAccuracy);
+    if (accuracyValues.length > 1 && accuracyValues.every(a => a === maxAccuracy)) {
+      strongestArea = 'All Sections';
+      weakestArea = 'None';
+    }
 
-    // Question-wise report
+    // Question-wise report (using immutable snapshot)
     const questionReports = [];
     for (const response of testAttempt.responses) {
-      // Find the section and question
+      // Find the section and question from snapshot
       let question = null;
       let section = null;
-      for (const sec of test.sections) {
+      for (const sec of testSnapshot.sections) {
         const q = sec.questions.id(response.questionId);
         if (q) {
           question = q;
@@ -698,25 +901,37 @@ exports.getResultAnalysis = async (req, res) => {
       }
 
       if (question) {
+        // CBT-compliant status logic
+        let status;
+        if (!response.attempted) {
+          status = 'Unattempted';
+        } else if (response.isCorrect) {
+          status = 'Correct';
+        } else {
+          status = 'Incorrect';
+        }
+        
         questionReports.push({
           questionText: question.questionText,
           userAnswer: response.selectedOption,
           correctAnswer: question.correctOptionIndex,
-          status: response.isCorrect ? 'Correct' : 'Incorrect',
+          status: status,
           explanation: question.explanation,
           section: section ? section.title : 'Unknown'
         });
       }
     }
 
-    // Cutoff analysis
+    // Cutoff analysis (clean, deterministic)
     let cutoffStatus = 'Not Available';
+    let userCategory = 'UNKNOWN';
+    let categoryCutoff = 0;
+    
     if (cutoff && testAttempt.user.category) {
-      const userCategory = testAttempt.user.category.toLowerCase();
-      let categoryCutoff = 0;
+      userCategory = testAttempt.user.category;
+      const categoryKey = userCategory.toLowerCase();
       
-      switch(userCategory) {
-        case 'gen':
+      switch(categoryKey) {
         case 'general':
           categoryCutoff = cutoff.cutoff.general;
           break;
@@ -748,9 +963,10 @@ exports.getResultAnalysis = async (req, res) => {
       userSummary: {
         userName: testAttempt.user.name,
         userEmail: testAttempt.user.email,
-        testName: test.testName,
+        testName: testSnapshot.testName,
         testSeriesName: testAttempt.testSeries.name,
         score: testAttempt.score,
+        maxScore: testSnapshot.totalMarks,
         correct: testAttempt.correct,
         incorrect: testAttempt.incorrect,
         unattempted: testAttempt.unattempted,
@@ -765,7 +981,9 @@ exports.getResultAnalysis = async (req, res) => {
       // Cutoff Analysis
       cutoffAnalysis: {
         status: cutoffStatus,
-        userCategory: testAttempt.user.category,
+        userCategory: userCategory,
+        cutoff: categoryCutoff,
+        score: testAttempt.score,
         cutoffs: cutoff ? cutoff.cutoff : null
       },
       
@@ -824,6 +1042,379 @@ exports.getUserTestAttempts = async (req, res) => {
     });
   }
 }
+
+// Get Live Questions for Active Attempt (Exam Mode)
+exports.getLiveQuestions = async (req, res) => {
+  try {
+    const { attemptId } = req.params;
+    const userId = req.user._id;
+
+    // Find the test attempt
+    const testAttempt = await TestAttempt.findById(attemptId)
+      ;
+
+    if (!testAttempt) {
+      return res.status(404).json({
+        success: false,
+        message: 'Test attempt not found'
+      });
+    }
+
+    // Check if user owns this attempt
+    if (testAttempt.user.toString() !== userId.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: 'You do not have permission to access this attempt'
+      });
+    }
+
+    // Check if test is still in progress
+    if (testAttempt.status !== 'IN_PROGRESS' || testAttempt.resultGenerated) {
+      return res.status(400).json({
+        success: false,
+        message: 'Test is no longer active'
+      });
+    }
+
+    // Use embedded test snapshot for performance (avoids TestSeries lookup)
+    const testSnapshot = testAttempt.testSnapshot;
+    console.log('DEBUG: testSnapshot sections:', JSON.stringify(testSnapshot.sections[0].questions[0], null, 2));
+    if (!testSnapshot) {
+      return res.status(500).json({
+        success: false,
+        message: 'Test snapshot not found'
+      });
+    }
+
+    // Calculate remaining time (CBT-compliant)
+    const now = new Date();
+    const startTime = new Date(testAttempt.startedAt);
+    const timeElapsed = (now.getTime() - startTime.getTime()) / 1000;
+    const remainingTime = Math.max(0, Math.floor(testSnapshot.durationInSeconds - timeElapsed));
+
+    // Auto-submit if time expired
+    if (remainingTime === 0 && testAttempt.status === 'IN_PROGRESS' && !testAttempt.resultGenerated) {
+      setImmediate(async () => {
+        try {
+          await autoSubmitOnTimeExpiry(testAttempt._id, testAttempt.testSeries, testAttempt.testId);
+        } catch (error) {
+          console.error('Error in auto-submit:', error);
+        }
+      });
+    }
+
+    // Build response structure matching Figma design (using snapshot)
+    const sections = testSnapshot.sections.map(section => {
+      const questions = section.questions.map(question => {
+        // Find existing response for this question
+        const existingResponse = testAttempt.responses.find(
+          r => r.questionId === question._id.toString()
+        );
+
+        // Determine question status based on response (CBT-compliant - read-only)
+        let status = 'UNVISITED';
+        if (existingResponse) {
+          if (existingResponse.selectedOption !== null && existingResponse.markedForReview) {
+            status = 'ANSWERED_MARKED';
+          } else if (existingResponse.selectedOption !== null) {
+            status = 'ANSWERED';
+          } else if (existingResponse.markedForReview) {
+            status = 'MARKED';
+          } else if (existingResponse.visited) {
+            status = 'UNANSWERED';  // Visited but no answer/mark
+          }
+        }
+
+        return {
+          questionId: question._id.toString(),
+          questionNumber: question.questionNumber,
+          questionText: question.questionText,
+          options: question.options,
+          status: status,
+          selectedOption: existingResponse ? existingResponse.selectedOption : null,
+          markedForReview: existingResponse ? existingResponse.markedForReview : false
+        };
+      });
+
+      return {
+        sectionId: section._id.toString(),
+        title: section.title,
+        questions: questions
+      };
+    });
+
+    // Calculate palette statistics (CBT-compliant)
+    const allQuestions = sections.flatMap(s => s.questions);
+    const palette = {
+      ANSWERED: allQuestions.filter(q => q.status === 'ANSWERED').length,
+      ANSWERED_MARKED: allQuestions.filter(q => q.status === 'ANSWERED_MARKED').length,
+      UNANSWERED: allQuestions.filter(q => q.status === 'UNANSWERED').length,
+      MARKED: allQuestions.filter(q => q.status === 'MARKED').length,
+      UNVISITED: allQuestions.filter(q => q.status === 'UNVISITED').length
+    };
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        remainingTime: remainingTime,
+        sections: sections,
+        palette: palette,
+        testInfo: {
+          testName: testSnapshot.testName,
+          totalQuestions: allQuestions.length,
+          startedAt: testAttempt.startedAt
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Error getting live questions:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+};
+
+// Mark Question as Visited (Navigation tracking)
+exports.markQuestionVisited = async (req, res) => {
+  try {
+    const { seriesId, testId } = req.params;
+    const { sectionId, questionId } = req.body;
+    const userId = req.user._id;
+
+    // VALIDATION PHASE
+    
+    // Find the test series and test
+    const testSeries = await TestSeries.findById(seriesId);
+    if (!testSeries) {
+      return res.status(404).json({
+        success: false,
+        message: 'Test series not found'
+      });
+    }
+
+    const test = testSeries.tests.id(testId);
+    if (!test) {
+      return res.status(404).json({
+        success: false,
+        message: 'Test not found in this series'
+      });
+    }
+
+    // Find the section and question
+    const section = test.sections.id(sectionId);
+    if (!section) {
+      return res.status(404).json({
+        success: false,
+        message: 'Section not found'
+      });
+    }
+
+    const question = section.questions.id(questionId);
+    if (!question) {
+      return res.status(404).json({
+        success: false,
+        message: 'Question not found'
+      });
+    }
+
+    // Check user access
+    const testIndex = testSeries.tests.findIndex(t => t._id.toString() === testId);
+    const isTestFree = testIndex < (testSeries.freeQuota || 2);
+    
+    let hasAccess = false;
+    if (isTestFree) {
+      hasAccess = true;
+    } else {
+      hasAccess = await TestSeriesAccessService.hasTestAccess(userId, seriesId, testId);
+    }
+
+    if (!hasAccess) {
+      return res.status(403).json({
+        success: false,
+        message: 'You do not have access to this test series'
+      });
+    }
+
+    // Check test state
+    const testState = getTestState(test);
+    if (!['live', 'results_available'].includes(testState)) {
+      return res.status(400).json({
+        success: false,
+        message: `Test cannot be accessed. Current state: ${testState}`
+      });
+    }
+
+    // Check existing attempt
+    const existingAttempt = await TestAttempt.findOne({
+      user: userId,
+      testSeries: seriesId,
+      testId: testId
+    });
+
+    if (!existingAttempt) {
+      return res.status(404).json({
+        success: false,
+        message: 'Test attempt not found'
+      });
+    }
+
+    // Extra guard: prevent marking after submission
+    if (existingAttempt.status !== 'IN_PROGRESS' || existingAttempt.resultGenerated) {
+      return res.status(400).json({
+        success: false,
+        message: 'Test already submitted'
+      });
+    }
+
+    // Use atomic update to mark question as visited
+    const updatedAttempt = await TestAttempt.findOneAndUpdate(
+      {
+        user: userId,
+        testSeries: seriesId,
+        testId: testId,
+        resultGenerated: { $ne: true },
+        status: 'IN_PROGRESS',
+        'responses.questionId': { $ne: questionId } // Response doesn't exist yet
+      },
+      {
+        $push: { 
+          responses: {
+            sectionId: sectionId,
+            questionId: questionId,
+            selectedOption: null,
+            isCorrect: null,  // Visited does not mean incorrect
+            timeTaken: 0,
+            markedForReview: false,
+            visited: true,
+            attempted: false  // Navigation does not constitute an attempt
+          }
+        }
+      },
+      { new: true }
+    );
+
+    // If the first update didn't work (response already exists), update existing
+    if (!updatedAttempt) {
+      await TestAttempt.updateOne(
+        {
+          user: userId,
+          testSeries: seriesId,
+          testId: testId,
+          resultGenerated: { $ne: true },
+          status: 'IN_PROGRESS',
+          'responses.questionId': questionId
+        },
+        {
+          $set: { 
+            'responses.$[elem].visited': true
+          }
+        },
+        {
+          arrayFilters: [{ 'elem.questionId': questionId }],
+          new: true
+        }
+      );
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Question marked as visited'
+    });
+  } catch (error) {
+    console.error('Error marking question as visited:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+};
+
+// Get Question Paper (Lightweight view for exam mode)
+exports.getQuestionPaper = async (req, res) => {
+  try {
+    const { attemptId } = req.params;
+    const { sectionId } = req.query;
+    const userId = req.user._id;
+
+    // Find the test attempt
+    const testAttempt = await TestAttempt.findById(attemptId)
+      ;
+
+    if (!testAttempt) {
+      return res.status(404).json({
+        success: false,
+        message: 'Test attempt not found'
+      });
+    }
+
+    // Check ownership
+    if (testAttempt.user.toString() !== userId.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: 'You do not have permission to access this attempt'
+      });
+    }
+
+    // Find the test
+    const testSeries = await TestSeries.findById(testAttempt.testSeries._id);
+    if (!testSeries) {
+      return res.status(404).json({
+        success: false,
+        message: 'Test series not found'
+      });
+    }
+
+    const test = testSeries.tests.id(testAttempt.testId);
+    if (!test) {
+      return res.status(404).json({
+        success: false,
+        message: 'Test not found in this series'
+      });
+    }
+
+    let questions = [];
+    
+    if (sectionId) {
+      // Get questions from specific section
+      const section = test.sections.id(sectionId);
+      if (!section) {
+        return res.status(404).json({
+          success: false,
+          message: 'Section not found'
+        });
+      }
+      questions = section.questions.map(q => ({
+        questionId: q._id.toString(),
+        questionNumber: q.questionNumber,
+        questionText: q.questionText.substring(0, 100) + '...' // Truncated for paper view
+      }));
+    } else {
+      // Get all questions
+      questions = test.sections.flatMap(section => 
+        section.questions.map(q => ({
+          questionId: q._id.toString(),
+          questionNumber: q.questionNumber,
+          sectionTitle: section.title
+        }))
+      );
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: questions
+    });
+  } catch (error) {
+    console.error('Error getting question paper:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+};
 
 // Get Leaderboard for a specific test
 exports.getLeaderboard = async (req, res) => {

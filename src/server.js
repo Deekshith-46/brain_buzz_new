@@ -3,7 +3,7 @@ const http = require('http');
 const app = require('./app');
 const connectDB = require('./config/db');
 const cron = require('node-cron'); // Import node-cron for scheduling
-const { autoSubmitExpiredTests } = require('../utils/testAutoSubmit'); // Import the auto-submit function
+const { processExpiredAttempts } = require('../utils/examAutoSubmit'); // Import the CBT-compliant auto-submit function
 
 // Load PYQ models
 require('./models/Course/Exam');
@@ -19,11 +19,11 @@ const server = http.createServer(app);
 
 connectDB();
 
-// Schedule the auto-submit job to run every 5 minutes
+// Schedule the auto-submit job to run every 30 seconds (CBT requirement)
 // This will automatically submit tests that have exceeded their time limit
-cron.schedule('*/5 * * * *', async () => {
+cron.schedule('*/30 * * * * *', async () => {  // Every 30 seconds
   console.log('Running scheduled auto-submit check...');
-  await autoSubmitExpiredTests();
+  await processExpiredAttempts();
 });
 
 server.listen(PORT, () => {

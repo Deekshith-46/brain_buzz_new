@@ -5,9 +5,10 @@
 2. [Database Models](#database-models)
 3. [API Routes](#api-routes)
 4. [Controllers](#controllers)
-5. [API Testing](#api-testing)
-6. [Access Control](#access-control)
-7. [Ranking System](#ranking-system)
+5. [Complete Exam Flow - Step by Step](#complete-exam-flow---step-by-step)
+6. [API Testing](#api-testing)
+7. [Access Control](#access-control)
+8. [Ranking System](#ranking-system)
 
 ## Overview
 
@@ -19,6 +20,7 @@ The Test Series module is a comprehensive system for creating, managing, and tak
 - Real-time answer submission
 - Automatic scoring and ranking
 - Result analysis and leaderboard
+- **Complete step-by-step exam flow** (see [Complete Exam Flow - Step by Step](#complete-exam-flow---step-by-step))
 
 ## Database Models
 
@@ -188,9 +190,13 @@ const mongoose = require('mongoose');
 const responseSchema = new mongoose.Schema({
   sectionId: String,
   questionId: String,
-  selectedOption: Number, // 0-3
+  selectedOption: Number, // 0-3 (can be null for cleared responses)
   isCorrect: Boolean,
-  timeTaken: Number  // seconds spent on this question
+  timeTaken: Number,  // seconds spent on this question
+  markedForReview: { 
+    type: Boolean, 
+    default: false 
+  }
 });
 
 // Test Attempt Schema
@@ -415,6 +421,8 @@ const router = express.Router();
 router.post('/:seriesId/:testId/start', startTest);                            // Start test
 router.post('/:seriesId/:testId/submit-question', submitAnswer);               // Submit answer
 router.post('/:seriesId/:testId/submit', submitTest);                          // Submit test
+router.get('/:attemptId/questions', getLiveQuestions);                         // Get live questions (NEW)
+router.get('/:attemptId/question-paper', getQuestionPaper);                    // Get question paper (NEW)
 router.get('/:attemptId/result', getResultAnalysis);                           // Get result analysis
 router.get('/my-attempts', getUserTestAttempts);                               // Get user attempts
 router.get('/:seriesId/:testId/leaderboard', getLeaderboard);                  // Get leaderboard
@@ -472,11 +480,13 @@ module.exports = router;
    - Prevents duplicate attempts
    - Creates new attempt record
 
-2. **submitAnswer** - Submits an answer to a question
+2. **submitAnswer** - Submits an answer to a question (ENHANCED)
    - Validates question existence
    - Computes correctness
    - Updates response atomically
    - Handles time tracking
+   - Supports marking for review
+   - Allows clearing responses
 
 3. **submitTest** - Submits the complete test
    - Validates all answers
@@ -484,14 +494,25 @@ module.exports = router;
    - Updates ranking asynchronously
    - Marks result as generated
 
-4. **getResultAnalysis** - Gets detailed result analysis
+4. **getLiveQuestions** - Gets exam-safe questions for active attempt (NEW)
+   - Returns questions without correct answers
+   - Includes attempt status (ANSWERED/MARKED/UNVISITED)
+   - Provides real-time remaining time
+   - Generates question palette statistics
+
+5. **getQuestionPaper** - Gets lightweight question list (NEW)
+   - Returns question numbers and basic info
+   - Supports section filtering
+   - Optimized for question paper view
+
+6. **getResultAnalysis** - Gets detailed result analysis
    - Section-wise performance
    - Question-wise report
    - Strength/weakness analysis
    - Cutoff comparison
 
-5. **getUserTestAttempts** - Gets user's test history
-6. **getLeaderboard** - Gets test leaderboard
+7. **getUserTestAttempts** - Gets user's test history
+8. **getLeaderboard** - Gets test leaderboard
 
 ### Test Attempt Admin Controller
 
@@ -3755,6 +3776,326 @@ exports.getLeaderboard = async (req, res) => {
 3. **getCutoff** - Gets cutoff information
 4. **updateCutoff** - Updates existing cutoff
 5. **deleteCutoff** - Removes cutoff
+
+## Complete Exam Flow - Step by Step
+
+This section details the complete process a user goes through to take a test, from starting to submitting, with all the necessary API calls.
+
+### Prerequisites
+- User must be authenticated
+- User must have purchased/access to the test series
+- Test must be active (within start and end time)
+
+### Step 1: Start Test Attempt
+
+**Endpoint:** `POST /api/v1/test-attempts/start`
+
+**Purpose:** Creates a new test attempt and initializes the exam timer
+
+**Request Body:**
+```json
+{
+  "seriesId": "67890abcdef1234567890abc",
+  "testId": "67890abcdef1234567890def"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Test started successfully",
+  "data": {
+    "attemptId": "67890abcdef1234567890123",
+    "testName": "Mock Test 1",
+    "duration": 1800,
+    "totalQuestions": 100,
+    "sections": [
+      {
+        "_id": "67890abcdef1234567890456",
+        "title": "Quantitative Aptitude",
+        "questions": [
+          {
+            "_id": "67890abcdef1234567890789",
+            "questionNumber": 1,
+            "questionText": "What is 2+2?",
+            "options": ["1", "2", "3", "4"],
+            "marks": 1,
+            "negativeMarks": 0.25
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+### Step 2: Get Live Questions (During Exam)
+
+**Endpoint:** `GET /api/v1/test-attempts/:attemptId/questions`
+
+**Purpose:** Get current exam state with live timer and question status
+
+**Query Parameters:**
+- `sectionId` (optional): Filter by section
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Questions retrieved successfully",
+  "data": {
+    "attemptId": "67890abcdef1234567890123",
+    "timeLeft": 1740, // seconds remaining
+    "totalTime": 1800,
+    "questions": [
+      {
+        "questionId": "67890abcdef1234567890789",
+        "questionNumber": 1,
+        "questionText": "What is 2+2?",
+        "options": ["1", "2", "3", "4"],
+        "status": "UNANSWERED", // UNVISITED, UNANSWERED, ANSWERED, MARKED, ANSWERED_MARKED
+        "selectedOption": null,
+        "markedForReview": false,
+        "visited": true,
+        "attempted": false
+      }
+    ],
+    "sectionSummary": [
+      {
+        "sectionId": "67890abcdef1234567890456",
+        "title": "Quantitative Aptitude",
+        "totalQuestions": 50,
+        "answered": 5,
+        "marked": 2,
+        "unanswered": 43
+      }
+    ]
+  }
+}
+```
+
+### Step 3: Submit Answer
+
+**Endpoint:** `POST /api/v1/test-attempts/:attemptId/submit-answer`
+
+**Purpose:** Submit answer for a specific question
+
+**Request Body:**
+```json
+{
+  "sectionId": "67890abcdef1234567890456",
+  "questionId": "67890abcdef1234567890789",
+  "selectedOption": 3, // 0-indexed
+  "timeTaken": 45, // seconds spent on this question
+  "markedForReview": false
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Answer submitted successfully",
+  "data": {
+    "questionId": "67890abcdef1234567890789",
+    "status": "ANSWERED",
+    "selectedOption": 3,
+    "markedForReview": false
+  }
+}
+```
+
+### Step 4: Mark Question for Review
+
+**Endpoint:** `POST /api/v1/test-attempts/:attemptId/submit-answer`
+
+**Request Body:**
+```json
+{
+  "sectionId": "67890abcdef1234567890456",
+  "questionId": "67890abcdef1234567890789",
+  "selectedOption": null, // Optional - can mark without answering
+  "timeTaken": 30,
+  "markedForReview": true
+}
+```
+
+### Step 5: Visit Question (Navigation)
+
+**Endpoint:** `POST /api/v1/test-attempts/:seriesId/:testId/visit-question`
+
+**Purpose:** Mark a question as visited (for palette tracking)
+
+**Request Body:**
+```json
+{
+  "sectionId": "67890abcdef1234567890456",
+  "questionId": "67890abcdef1234567890789"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Question marked as visited"
+}
+```
+
+### Step 6: Get Question Paper (Lightweight View)
+
+**Endpoint:** `GET /api/v1/test-attempts/:attemptId/question-paper`
+
+**Purpose:** Get all questions without status information (for review)
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Question paper retrieved successfully",
+  "data": {
+    "sections": [
+      {
+        "sectionId": "67890abcdef1234567890456",
+        "title": "Quantitative Aptitude",
+        "questions": [
+          {
+            "questionId": "67890abcdef1234567890789",
+            "questionNumber": 1,
+            "questionText": "What is 2+2?",
+            "options": ["1", "2", "3", "4"]
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+### Step 7: Submit Test (Final Submission)
+
+**Endpoint:** `POST /api/v1/test-attempts/:attemptId/submit`
+
+**Purpose:** Submit the entire test for evaluation
+
+**Request Body:**
+```json
+{
+  "timeTaken": 1800 // Optional: override auto-calculated time
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Test submitted successfully",
+  "data": {
+    "attemptId": "67890abcdef1234567890123",
+    "score": 85,
+    "correct": 85,
+    "incorrect": 10,
+    "unattempted": 5,
+    "accuracy": 89.47,
+    "percentage": 85.0,
+    "speed": 2.83, // questions per minute
+    "timeTaken": 1800
+  }
+}
+```
+
+### Step 8: Get Result Analysis
+
+**Endpoint:** `GET /api/v1/test-attempts/:attemptId/result-analysis`
+
+**Purpose:** Get detailed result analysis after submission
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Result analysis retrieved successfully",
+  "data": {
+    "userSummary": {
+      "userName": "John Doe",
+      "userEmail": "john@example.com",
+      "testName": "Mock Test 1",
+      "testSeriesName": "UPSC Prelims 2024",
+      "score": 85,
+      "correct": 85,
+      "incorrect": 10,
+      "unattempted": 5,
+      "accuracy": 89.47,
+      "percentage": 85.0,
+      "speed": 2.83,
+      "timeTaken": 1800
+    },
+    "sectionAnalysis": [
+      {
+        "sectionName": "Quantitative Aptitude",
+        "correct": 25,
+        "incorrect": 3,
+        "unattempted": 2,
+        "accuracy": 89.29,
+        "score": 23.25
+      }
+    ],
+    "questionReports": [
+      {
+        "questionText": "What is 2+2?",
+        "userAnswer": 3,
+        "correctAnswer": 3,
+        "status": "Correct", // Correct, Incorrect, Unattempted
+        "explanation": "2+2 equals 4, which is option D (index 3)",
+        "section": "Quantitative Aptitude"
+      }
+    ],
+    "performanceMetrics": {
+      "strongestArea": "Quantitative Aptitude",
+      "weakestArea": "General Studies",
+      "cutoffStatus": "Passed",
+      "percentile": 92.5
+    }
+  }
+}
+```
+
+### Step 9: Get Leaderboard
+
+**Endpoint:** `GET /api/v1/test-series/:seriesId/tests/:testId/rankings`
+
+**Purpose:** View ranking and compare with other participants
+
+**Query Parameters:**
+- `limit` (optional): Number of top rankings to fetch (default: 10)
+- `page` (optional): Page number for pagination
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Rankings fetched successfully",
+  "data": {
+    "testName": "Mock Test 1",
+    "totalParticipants": 1250,
+    "userRanking": {
+      "rank": 95,
+      "score": 85,
+      "accuracy": 89.47,
+      "percentile": 92.4
+    },
+    "topRankings": [
+      {
+        "rank": 1,
+        "userName": "Top Performer",
+        "score": 98,
+        "accuracy": 98.0
+      }
+    ]
+  }
+}
+```
 
 ## API Testing
 

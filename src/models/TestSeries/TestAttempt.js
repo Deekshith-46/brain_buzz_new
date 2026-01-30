@@ -3,9 +3,21 @@ const mongoose = require('mongoose');
 const responseSchema = new mongoose.Schema({
   sectionId: String,
   questionId: String,
-  selectedOption: Number, // 0-3
+  selectedOption: Number, // 0-3 (can be null for cleared responses)
   isCorrect: Boolean,
-  timeTaken: Number  // seconds spent on this question
+  timeTaken: Number,  // seconds spent on this question
+  markedForReview: { 
+    type: Boolean, 
+    default: false 
+  },
+  visited: {
+    type: Boolean,
+    default: false
+  },
+  attempted: {
+    type: Boolean,
+    default: false  // Only true when user selects an option
+  }
 });
 
 const testAttemptSchema = new mongoose.Schema({
@@ -29,6 +41,40 @@ const testAttemptSchema = new mongoose.Schema({
   rank: Number,        // User's rank in this test
 
   resultGenerated: { type: Boolean, default: false },
+  
+  // Embedded test snapshot for performance (avoids frequent TestSeries lookups)
+  testSnapshot: {
+    testName: String,
+    durationInSeconds: Number,
+    positiveMarks: Number,
+    negativeMarks: Number,
+    sections: [{
+      _id: String,
+      title: String,
+      questions: [{
+        _id: String,
+        questionNumber: Number,
+        
+        // 🔥 REQUIRED FOR EXAM UI
+        questionText: {
+          type: String,
+          required: true
+        },
+        
+        options: {
+          type: [String],
+          required: true
+        },
+        
+        // 🔐 Used only after submission
+        correctOptionIndex: Number,
+        explanation: String,
+        
+        marks: Number,
+        negativeMarks: Number
+      }]
+    }]
+  },
   
   status: { 
     type: String, 

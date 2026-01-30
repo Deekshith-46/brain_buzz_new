@@ -2,6 +2,237 @@
 
 This guide provides step-by-step instructions for testing all Test Series-related APIs, including required request bodies, endpoints, and expected responses.
 
+Totally fair — **this confusion is 100% normal**, and honestly this is the **most important CBT concept**.
+Once this clicks, **everything else (palette, APIs, results) will feel obvious**.
+
+I’ll do this calmly, **no APIs yet**, just understanding.
+After this, STEP-4 will make sense automatically.
+
+---
+
+## 🧠 First: Think like a real exam (UPSC / SSC / CAT)
+
+When you sit in a CBT exam, **each question has a life-cycle**.
+The system tracks **WHAT you did**, not just what you answered.
+
+Let’s break it slowly 👇
+
+![Image](https://img.jagranjosh.com//images/2026/01/19/template/image/jee-main-online-exam-tips-image1-1768830870428.png)
+
+![Image](https://m.media-amazon.com/images/I/91gp0ohSVJL._AC_UF1000%2C1000_QL80_.jpg)
+
+![Image](https://www.iitms.co.in/products/img/Online-Examination-Management-system-Screens.webp)
+
+---
+
+# 🟡 1️⃣ UNVISITED (White)
+
+### Meaning (Plain English)
+
+> You **never opened** this question.
+
+### What user did
+
+* Didn’t click the question number
+* Didn’t land on it even once
+
+### Backend truth
+
+```js
+responses[]  →  NO ENTRY for this question
+```
+
+### Palette
+
+* White / Grey
+* Counted as **Unvisited**
+
+📌 Example
+You start the test → Question 1 opens
+Questions 2–100 = **UNVISITED**
+
+---
+
+# 🟠 2️⃣ UNANSWERED (Red)
+
+### Meaning
+
+> You **opened the question**, but **did NOT select any option**.
+
+### What user did
+
+* Clicked the question
+* Read it
+* Maybe thought about it
+* Left without choosing an answer
+
+### Backend truth
+
+```js
+visited: true
+attempted: false
+selectedOption: null
+```
+
+### Palette
+
+* Red
+* Counted as **Unanswered**
+
+📌 Example
+You open Question 5, read it, press **Next** without selecting anything.
+
+That question is now **UNANSWERED**, not UNVISITED.
+
+---
+
+## 🔴 Important difference (THIS IS WHERE CONFUSION COMES)
+
+| Status     | Did user see it? | Did user answer? |
+| ---------- | ---------------- | ---------------- |
+| UNVISITED  | ❌ No             | ❌ No             |
+| UNANSWERED | ✅ Yes            | ❌ No             |
+
+👉 **Visited ≠ Answered**
+
+---
+
+# 🟢 3️⃣ ANSWERED (Green)
+
+### Meaning
+
+> You selected an option and saved it.
+
+### What user did
+
+* Selected option
+* Clicked **Save & Next** (or auto-save)
+
+### Backend truth
+
+```js
+visited: true
+attempted: true
+selectedOption: 2
+```
+
+### Palette
+
+* Green
+* Counted as **Answered**
+
+📌 Example
+You select “Article 368” → Save & Next
+→ **ANSWERED**
+
+---
+
+# 🟣 4️⃣ MARKED (Purple)
+
+### Meaning
+
+> You **did NOT answer**, but you said:
+> “I want to come back later”
+
+### What user did
+
+* Clicked **Mark for Review**
+* Did not select any option
+
+### Backend truth
+
+```js
+visited: true
+attempted: false
+markedForReview: true
+```
+
+### Palette
+
+* Purple
+* Counted as **Marked**
+
+---
+
+# 🟢🟣 5️⃣ ANSWERED & MARKED (Green + Purple)
+
+### Meaning
+
+> You **answered**, but still want to review later
+
+### What user did
+
+* Selected option
+* Clicked **Mark for Review**
+
+### Backend truth
+
+```js
+visited: true
+attempted: true
+markedForReview: true
+```
+
+### Palette
+
+* Green + Purple
+* Counted separately
+
+📌 Very common in UPSC exams
+
+---
+
+# 🧩 One Question – All Possible States
+
+```
+UNVISITED
+   ↓ (user opens)
+UNANSWERED
+   ↓ (select option)
+ANSWERED
+   ↓ (mark for review)
+ANSWERED_MARKED
+```
+
+OR
+
+```
+UNVISITED
+   ↓
+UNANSWERED
+   ↓ (mark for review)
+MARKED
+```
+
+---
+
+# ❗ Why CBT systems care so much about this
+
+Because results depend on **attempted**, not visited.
+
+* ❌ Unvisited → Not attempted
+* ❌ Unanswered → Not attempted
+* ✅ Answered → Attempted
+* ✅ Answered + Marked → Attempted
+
+👉 **Only ATTEMPTED questions affect marks**
+
+---
+
+# 🧠 Map this to your backend (simple)
+
+| UI Status       | attempted | visited |
+| --------------- | --------- | ------- |
+| UNVISITED       | false     | false   |
+| UNANSWERED      | false     | true    |
+| MARKED          | false     | true    |
+| ANSWERED        | true      | true    |
+| ANSWERED_MARKED | true      | true    |
+
+---
+
+# 🎯 Now you are READY for STEP-4
+
 ## Important Note on Request Format
 
 Test Series APIs have different request formats depending on the operation:
