@@ -362,7 +362,10 @@ exports.getPublicTestInSeries = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      data: testData
+      data: {
+        testSeriesName: testSeries.name,
+        test: testData
+      }
     });
 
   } catch (error) {
@@ -430,7 +433,10 @@ exports.getPublicTestInSeriesPublic = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      data: testData
+      data: {
+        testSeriesName: testSeries.name,
+        test: testData
+      }
     });
 
   } catch (error) {

@@ -80,10 +80,23 @@ const testAttemptSchema = new mongoose.Schema({
     type: String, 
     enum: ['IN_PROGRESS', 'SUBMITTED'], 
     default: 'IN_PROGRESS' 
+  },
+  
+  // Flag to distinguish admin attempts from user attempts
+  isAdminAttempt: {
+    type: Boolean,
+    default: false
   }
 }, { timestamps: true });
 
 // Compound unique index to prevent duplicate attempts per user+test
-testAttemptSchema.index({ user: 1, testSeries: 1, testId: 1 }, { unique: true });
+// But allow unlimited attempts for admin (partial filter)
+testAttemptSchema.index(
+  { user: 1, testSeries: 1, testId: 1 },
+  { 
+    unique: true,
+    partialFilterExpression: { isAdminAttempt: false }
+  }
+);
 
 module.exports = mongoose.model('TestAttempt', testAttemptSchema);

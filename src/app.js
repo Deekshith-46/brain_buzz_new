@@ -25,7 +25,7 @@ const adminEBookRoutes = require('./routes/Admin/eBookRoutes');
 const adminDailyQuizRoutes = require('./routes/Admin/dailyQuizRoutes');
 const adminCurrentAffairsRoutes = require('./routes/Admin/currentAffairsRoutes');
 const adminCurrentAffairsCategoryRoutes = require('./routes/Admin/currentAffairsCategoryRoutes');
-const adminTestSeriesRoutes = require('./routes/Admin/testSeriesRoutes');
+// const adminTestSeriesRoutes = require('./routes/Admin/testSeriesRoutes');  // OLD - replaced by new admin routes
 const adminLiveClassRoutes = require('./routes/Admin/liveClassRoutes');
 const userRoutes = require('./routes/User/userRoutes');
 const userAuthRoutes = require('./routes/User/authRoutes');
@@ -74,7 +74,7 @@ app.use('/api/admin/ebooks', adminEBookRoutes);
 app.use('/api/admin/daily-quizzes', adminDailyQuizRoutes);
 app.use('/api/admin/current-affairs', adminCurrentAffairsRoutes);
 app.use('/api/admin/current-affairs-categories', adminCurrentAffairsCategoryRoutes);
-app.use('/api/admin/test-series', adminTestSeriesRoutes);
+// app.use('/api/admin/test-series', adminTestSeriesRoutes);  // OLD - using new admin routes instead
 app.use('/api/admin/live-classes', adminLiveClassRoutes);
 app.use('/api/v1/admin/coupons', adminCouponRoutes);
 // And in your route middleware section, add:
@@ -136,6 +136,10 @@ app.use('/api/admin/current-affairs/filters', adminCurrentAffairsFilterRoutes);
 // Admin Test Series Filter Routes
 const adminTestSeriesFilterRoutes = require('./routes/Admin/testSeriesFilterRoutes');
 app.use('/api/admin/test-series/filters', adminTestSeriesFilterRoutes);
+
+// Admin Exam Attempt Routes
+const adminExamAttemptRoutes = require('./routes/Admin/adminRoutes');
+app.use('/api/admin', adminExamAttemptRoutes);
 
 // Banner Routes
 const adminBannerRoutes = require('./routes/Admin/bannerRoutes');

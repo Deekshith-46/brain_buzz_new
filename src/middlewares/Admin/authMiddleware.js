@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const mongoose = require('mongoose');
 
 const authMiddleware = async (req, res, next) => {
   try {
@@ -16,7 +17,13 @@ const authMiddleware = async (req, res, next) => {
       return res.status(401).json({ message: 'Invalid admin token' });
     }
 
-    req.admin = { email: decoded.email, role: decoded.role };
+    // Create a mock admin user object with valid ObjectId for TestAttempt model
+    req.user = { 
+      _id: new mongoose.Types.ObjectId('000000000000000000000000'), // Valid ObjectId
+      email: decoded.email, 
+      role: decoded.role,
+      isAdmin: true
+    };
     next();
   } catch (error) {
     console.error('Auth error:', error);

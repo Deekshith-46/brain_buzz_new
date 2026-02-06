@@ -1,18 +1,14 @@
 const express = require('express');
 const router = express.Router();
 
-const {
-  createAdmin,
-  getAdmins,
-  getAdminById,
-  updateAdmin,
-  deleteAdmin,
-} = require('../../controllers/Admin/adminController');
+// Import admin route modules
+const adminTestAttemptRoutes = require('./adminTestAttemptRoutes');
+const adminTestSeriesRoutes = require('./adminTestSeriesRoutes');
+const adminFilterRoutes = require('./adminFilterRoutes');
 
-router.post('/', createAdmin);
-router.get('/', getAdmins);
-router.get('/:id', getAdminById);
-router.put('/:id', updateAdmin);
-router.delete('/:id', deleteAdmin);
+// Mount admin routes
+router.use('/test-attempts', adminTestAttemptRoutes);
+router.use('/test-series', adminTestSeriesRoutes);
+router.use('/filters', adminFilterRoutes);
 
 module.exports = router;
