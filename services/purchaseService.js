@@ -6,103 +6,48 @@ const Coupon = require('../src/models/Coupon/Coupon');
 class PurchaseService {
     // Add this method to the PurchaseService class
 static async getApplicableCoupons(items, userId) {
-  const itemIds = {
-    test_series: [],
-    online_course: []
-  };
+  const now = new Date();
 
-  // Categorize items by type
-  items.forEach(item => {
-    if (item.itemType === 'test_series') {
-      itemIds.test_series.push(item.itemId);
-    } else if (item.itemType === 'online_course') {
-      itemIds.online_course.push(item.itemId);
-    }
+  const coupons = await Coupon.find({
+    isActive: true,
+    validFrom: { $lte: now },
+    validUntil: { $gte: now }
   });
 
-  // Build the query for applicable coupons
-  const query = {
-    isActive: true,
-    validFrom: { $lte: new Date() },
-    validUntil: { $gte: new Date() },
-    $or: [
-      { maxUses: null },
-      { $expr: { $lt: ['$usedCount', '$maxUses'] } }
-    ],
-    $or: [
-      { 'applicableItems.itemType': 'all' },
-      {
-        $or: [
-          {
-            'applicableItems.itemType': 'test_series',
-            'applicableItems.itemId': { $in: itemIds.test_series }
-          },
-          {
-            'applicableItems.itemType': 'online_course',
-            'applicableItems.itemId': { $in: itemIds.online_course }
-          }
-        ]
-      }
-    ]
-  };
-
-  // Exclude coupons the user has already used
   const usedCoupons = await Purchase.distinct('coupon.code', {
     user: userId,
-    status: 'completed',
-    'coupon.code': { $exists: true, $ne: null }
+    status: 'completed'
   });
 
-  if (usedCoupons.length > 0) {
-    query.code = { $nin: usedCoupons };
-  }
+  return coupons.filter(coupon => {
+    if (coupon.maxUses && coupon.usedCount >= coupon.maxUses) return false;
+    if (usedCoupons.includes(coupon.code)) return false;
 
-  return Coupon.find(query).sort({ discountValue: -1 });
+    return coupon.applicableItems.some(ai =>
+      ai.itemType === 'all' ||
+      items.some(item => item.itemType === ai.itemType)
+    );
+  }).sort((a, b) => b.discountValue - a.discountValue);
 }
 
   // Validate coupon and calculate discount
   static async validateCoupon(code, items, userId) {
-    const coupon = await Coupon.findOne({
-      code,
-      isActive: true,
-      validFrom: { $lte: new Date() },
-      validUntil: { $gte: new Date() },
-      $or: [
-        { maxUses: null },
-        { $expr: { $lt: ['$usedCount', '$maxUses'] } }
-      ]
-    });
-
-    if (!coupon) {
-      throw new Error('Invalid or expired coupon');
-    }
-
-    // Check if user has already used this coupon
-    const userUsed = await Purchase.findOne({
-      user: userId,
-      'coupon.code': code,
-      status: 'completed'
-    });
-
-    if (userUsed) {
-      throw new Error('You have already used this coupon');
+    // Use centralized coupon utility to resolve and validate coupon
+    let coupon;
+    try {
+      coupon = await require('../src/utils/couponUtils').resolveCoupon(code, items, userId);
+    } catch (error) {
+      throw new Error(error.message);
     }
 
     // Calculate total amount
     let totalAmount = 0;
     const itemPrices = {};
+    
+    const { getOriginalPrice } = require('../src/utils/pricingUtils');
 
     for (const item of items) {
-      let price = 0;
-      
-      if (item.itemType === 'test_series') {
-        const testSeries = await mongoose.model('TestSeries').findById(item.itemId).select('price');
-        price = testSeries?.price || 0;
-      } else if (item.itemType === 'online_course') {
-        const course = await mongoose.model('Course').findById(item.itemId).select('price');
-        price = course?.price || 0;
-      }
-      
+      const price = await getOriginalPrice(item);
       itemPrices[item.itemId] = price;
       totalAmount += price;
     }
@@ -113,12 +58,8 @@ static async getApplicableCoupons(items, userId) {
     }
 
     // Calculate discount
-    let discount = 0;
-    if (coupon.discountType === 'percentage') {
-      discount = (totalAmount * coupon.discountValue) / 100;
-    } else {
-      discount = coupon.discountValue;
-    }
+    const { calculateCouponDiscount } = require('../src/utils/couponUtils');
+    const discount = calculateCouponDiscount(coupon, totalAmount);
 
     return {
       coupon: {
@@ -136,18 +77,11 @@ static async getApplicableCoupons(items, userId) {
     // Calculate total amount
     let totalAmount = 0;
     const itemPrices = {};
+    
+    const { getOriginalPrice } = require('../src/utils/pricingUtils');
 
     for (const item of items) {
-      let price = 0;
-      
-      if (item.itemType === 'test_series') {
-        const testSeries = await mongoose.model('TestSeries').findById(item.itemId).select('price');
-        price = testSeries?.price || 0;
-      } else if (item.itemType === 'online_course') {
-        const course = await mongoose.model('Course').findById(item.itemId).select('price');
-        price = course?.price || 0;
-      }
-      
+      const price = await getOriginalPrice(item);
       itemPrices[item.itemId] = price;
       totalAmount += price;
     }
@@ -158,27 +92,25 @@ static async getApplicableCoupons(items, userId) {
 
     // Apply coupon if provided
     if (couponCode) {
-    const coupons = await this.getApplicableCoupons(items, userId);
-    const coupon = coupons.find(c => c.code === couponCode.toUpperCase());
-    
-    if (!coupon) {
-      throw new Error('Invalid or inapplicable coupon');
+      // Use centralized coupon utility to resolve and validate coupon
+      let coupon;
+      try {
+        coupon = await require('../src/utils/couponUtils').resolveCoupon(couponCode, items, userId);
+      } catch (error) {
+        throw new Error(error.message);
+      }
+      
+      // Calculate discount
+      const { calculateCouponDiscount } = require('../src/utils/couponUtils');
+      discountAmount = calculateCouponDiscount(coupon, totalAmount);
+      
+      finalAmount = Math.max(0, totalAmount - discountAmount);
+      couponData = {
+        code: coupon.code,
+        discountType: coupon.discountType,
+        discountValue: coupon.discountValue
+      };
     }
-
-    // Calculate discount based on coupon type
-    if (coupon.discountType === 'percentage') {
-      discountAmount = (totalAmount * coupon.discountValue) / 100;
-    } else {
-      discountAmount = Math.min(coupon.discountValue, totalAmount);
-    }
-
-    finalAmount = Math.max(0, totalAmount - discountAmount);
-    couponData = {
-      code: coupon.code,
-      discountType: coupon.discountType,
-      discountValue: coupon.discountValue
-    };
-  }
 
     // Set expiry date based on validity from the purchased items
     // First, we need to determine the validity period for the items being purchased
@@ -290,12 +222,23 @@ static async getApplicableCoupons(items, userId) {
       
       await purchase.save();
 
-      // Increment coupon usage count
+      // Increment coupon usage count atomically to prevent race conditions
       if (purchase.coupon?.code) {
-        await Coupon.updateOne(
-          { code: purchase.coupon.code },
+        const result = await Coupon.updateOne(
+          {
+            code: purchase.coupon.code,
+            $or: [
+              { maxUses: null },
+              { $expr: { $lt: ['$usedCount', '$maxUses'] } }
+            ]
+          },
           { $inc: { usedCount: 1 } }
         );
+        
+        // Log warning if coupon usage exceeded maxUses
+        if (result.modifiedCount === 0) {
+          console.warn(`Coupon ${purchase.coupon.code} may have exceeded maxUses limit during increment.`);
+        }
       }
 
       return purchase;

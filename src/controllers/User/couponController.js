@@ -44,13 +44,23 @@ exports.validateCoupon = async (req, res) => {
       });
     }
 
-    const coupons = await PurchaseService.getApplicableCoupons(items, userId);
-    const coupon = coupons.find(c => c.code === code.toUpperCase());
-
-    if (!coupon) {
+    try {
+      await require('../../utils/couponUtils').resolveCoupon(code, items, userId);
+      
+      // If we reach here, coupon is valid and applicable
+      const coupons = await PurchaseService.getApplicableCoupons(items, userId);
+      const coupon = coupons.find(c => c.code === code.toUpperCase());
+      
+      if (!coupon) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid or inapplicable coupon'
+        });
+      }
+    } catch (error) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid or inapplicable coupon'
+        message: error.message
       });
     }
 
@@ -60,11 +70,17 @@ exports.validateCoupon = async (req, res) => {
       let price = 0;
       
       if (item.itemType === 'test_series') {
-        const testSeries = await mongoose.model('TestSeries').findById(item.itemId).select('price');
+        const TestSeries = require('../../models/TestSeries/TestSeries');
+        const testSeries = await TestSeries.findById(item.itemId).select('price');
         price = testSeries?.price || 0;
       } else if (item.itemType === 'online_course') {
-        const course = await mongoose.model('Course').findById(item.itemId).select('price');
+        const Course = require('../../models/Course/Course');
+        const course = await Course.findById(item.itemId).select('price');
         price = course?.price || 0;
+      } else if (item.itemType === 'publication') {
+        const Publication = require('../../models/Publication/Publication');
+        const publication = await Publication.findById(item.itemId).select('price');
+        price = publication?.price || 0;
       }
       
       totalAmount += price;

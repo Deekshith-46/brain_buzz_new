@@ -55,7 +55,30 @@ exports.getAllOrders = async (req, res) => {
     res.status(200).json({
       success: true,
       data: {
-        orders: orders.docs,
+        orders: orders.docs.map(order => ({
+          ...order,
+          // Add originalAmount and discountAmount with safe fallback logic
+          originalAmount: typeof order.originalAmount === 'number' 
+            ? order.originalAmount 
+            : typeof order.pricing?.baseTotal === 'number' 
+            ? order.pricing.baseTotal 
+            : null,
+          discountAmount: typeof order.discountAmount === 'number' 
+            ? order.discountAmount 
+            : typeof order.pricing?.couponDiscount === 'number' || typeof order.pricing?.productDiscount === 'number'
+            ? (order.pricing.couponDiscount || 0) + (order.pricing.productDiscount || 0)
+            : 0,
+          // Normalize itemType to snake_case
+          items: order.items.map(item => ({
+            ...item,
+            itemType: item.itemType.toLowerCase().includes('test') ? 'test_series' : 
+                     item.itemType.toLowerCase().includes('course') ? 'online_course' : 
+                     item.itemType,
+          })),
+          // Add invoiceId and refundable fields
+          invoiceId: `INV-${order._id.toString().substring(0, 8).toUpperCase()}-${new Date(order.createdAt).getFullYear()}`,
+          refundable: order.status === 'completed' && new Date() - new Date(order.createdAt) < 30 * 24 * 60 * 60 * 1000, // 30 days refund window
+        })),
         total: orders.totalDocs,
         page: orders.page,
         totalPages: orders.totalPages,
@@ -113,7 +136,30 @@ exports.getOrderById = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      data: order
+      data: {
+        ...order,
+        // Add originalAmount and discountAmount with safe fallback logic
+        originalAmount: typeof order.originalAmount === 'number' 
+          ? order.originalAmount 
+          : typeof order.pricing?.baseTotal === 'number' 
+          ? order.pricing.baseTotal 
+          : null,
+        discountAmount: typeof order.discountAmount === 'number' 
+          ? order.discountAmount 
+          : typeof order.pricing?.couponDiscount === 'number' || typeof order.pricing?.productDiscount === 'number'
+          ? (order.pricing.couponDiscount || 0) + (order.pricing.productDiscount || 0)
+          : 0,
+        // Normalize itemType to snake_case
+        items: order.items.map(item => ({
+          ...item,
+          itemType: item.itemType.toLowerCase().includes('test') ? 'test_series' : 
+                   item.itemType.toLowerCase().includes('course') ? 'online_course' : 
+                   item.itemType,
+        })),
+        // Add invoiceId and refundable fields
+        invoiceId: `INV-${order._id.toString().substring(0, 8).toUpperCase()}-${new Date(order.createdAt).getFullYear()}`,
+        refundable: order.status === 'completed' && new Date() - new Date(order.createdAt) < 30 * 24 * 60 * 60 * 1000, // 30 days refund window
+      }
     });
   } catch (error) {
     console.error('Error fetching order:', error);
@@ -211,7 +257,30 @@ exports.getOrdersByUser = async (req, res) => {
     res.status(200).json({
       success: true,
       data: {
-        orders: orders.docs,
+        orders: orders.docs.map(order => ({
+          ...order,
+          // Add originalAmount and discountAmount with safe fallback logic
+          originalAmount: typeof order.originalAmount === 'number' 
+            ? order.originalAmount 
+            : typeof order.pricing?.baseTotal === 'number' 
+            ? order.pricing.baseTotal 
+            : null,
+          discountAmount: typeof order.discountAmount === 'number' 
+            ? order.discountAmount 
+            : typeof order.pricing?.couponDiscount === 'number' || typeof order.pricing?.productDiscount === 'number'
+            ? (order.pricing.couponDiscount || 0) + (order.pricing.productDiscount || 0)
+            : 0,
+          // Normalize itemType to snake_case
+          items: order.items.map(item => ({
+            ...item,
+            itemType: item.itemType.toLowerCase().includes('test') ? 'test_series' : 
+                     item.itemType.toLowerCase().includes('course') ? 'online_course' : 
+                     item.itemType,
+          })),
+          // Add invoiceId and refundable fields
+          invoiceId: `INV-${order._id.toString().substring(0, 8).toUpperCase()}-${new Date(order.createdAt).getFullYear()}`,
+          refundable: order.status === 'completed' && new Date() - new Date(order.createdAt) < 30 * 24 * 60 * 60 * 1000, // 30 days refund window
+        })),
         total: orders.totalDocs,
         page: orders.page,
         totalPages: orders.totalPages,

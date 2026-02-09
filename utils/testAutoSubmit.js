@@ -2,6 +2,9 @@ const TestAttempt = require('../src/models/TestSeries/TestAttempt');
 const TestSeries = require('../src/models/TestSeries/TestSeries');
 const TestRanking = require('../src/models/TestSeries/TestRanking');
 
+// Import dynamic cron manager
+const dynamicCronManager = require('./dynamicCronManager');
+
 /**
  * Auto-submit expired test attempts
  * This function should be run periodically (e.g., every 5 minutes) via a cron job
@@ -131,6 +134,18 @@ const autoSubmitExpiredTests = async () => {
     }
 
     console.log(`Auto-submit process completed. Processed: ${processedCount}, Submitted: ${submittedCount}`);
+    
+    // Check if there are still any in-progress attempts after processing
+    // If none remain, we should stop the cron job
+    const remainingInProgress = await TestAttempt.countDocuments({
+      status: 'IN_PROGRESS',
+      resultGenerated: false
+    });
+    
+    if (remainingInProgress === 0) {
+      // Stop the auto-submit job if no tests are in progress anymore
+      dynamicCronManager.stopAutoSubmitJob();
+    }
   } catch (error) {
     console.error('Error in auto-submit process:', error);
   }

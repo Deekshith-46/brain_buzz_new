@@ -56,6 +56,9 @@ const orderSchema = new Schema({
     discountValue: Number
   },
   paymentDetails: Object,
+  originalAmount: Number,
+  discountAmount: Number,
+  pricing: Object,
   shippingAddress: Object,
   billingAddress: Object
 }, { timestamps: true });

@@ -48,12 +48,8 @@ const couponSchema = new mongoose.Schema({
   applicableItems: [{
     itemType: {
       type: String,
-      enum: ['test_series', 'online_course', 'all'],
+      enum: ['test_series', 'online_course', 'publication', 'all'],
       required: true
-    },
-    itemId: {
-      type: mongoose.Schema.Types.ObjectId,
-      refPath: 'applicableItems.itemType'
     }
   }],
   // Default: if applicableItems is empty, coupon applies to all test_series and online_course

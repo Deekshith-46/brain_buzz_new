@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Brain Buzz - Payment Integration</title>
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            text-align: center;
+            color: #7f8c8d;
+            margin-bottom: 30px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #34495e;
+        }
+        input[type="text"], input[type="password"], select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        input:focus, select:focus {
+            outline: none;
+            border-color: #3498db;
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        button:disabled {
+            background-color: #bdc3c7;
+            cursor: not-allowed;
+        }
+        .btn-success {
+            background-color: #27ae60;
+        }
+        .btn-success:hover {
+            background-color: #229954;
+        }
+        .btn-warning {
+            background-color: #f39c12;
+        }
+        .btn-warning:hover {
+            background-color: #e67e22;
+        }
+        .btn-danger {
+            background-color: #e74c3c;
+        }
+        .btn-danger:hover {
+            background-color: #c0392b;
+        }
+        .result-container {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 10px 0;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .hidden {
+            display: none;
+        }
+        .section-title {
+            color: #2c3e50;
+            border-bottom: 2px solid #ecf0f1;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+        .product-info {
+            background-color: #e8f4fd;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>Brain Buzz - Payment Integration</h1>
+    <p class="subtitle">Secure payment processing for Test Series and Online Courses</p>
+
+    <!-- JWT Token Section -->
+    <div class="container">
+        <h2 class="section-title">Authentication</h2>
+        <div class="form-group">
+            <label for="jwtToken">JWT Token:</label>
+            <input type="password" id="jwtToken" placeholder="Enter your JWT token">
+            <small>Enter your authentication token to access the purchase system</small>
+        </div>
+        <div class="form-group">
+            <label for="apiBaseUrl">API Base URL:</label>
+            <input type="text" id="apiBaseUrl" value="http://localhost:3000" placeholder="Enter API base URL">
+            <small>Default: http://localhost:3000</small>
+        </div>
+        <button onclick="saveToken()">Save Token & Settings</button>
+        <div id="authStatus"></div>
+    </div>
+
+    <!-- Product Selection Section -->
+    <div class="container" id="productSection">
+        <h2 class="section-title">Select Product</h2>
+        <div class="form-group">
+            <label>Select Product Type:</label>
+            <div>
+                <label style="margin-right: 20px;">
+                    <input type="radio" name="productType" value="test_series" onchange="toggleProductIdField()" checked> 
+                    Test Series
+                </label>
+                <label style="margin-right: 20px;">
+                    <input type="radio" name="productType" value="online_course" onchange="toggleProductIdField()"> 
+                    Online Course
+                </label>
+                <label>
+                    <input type="radio" name="productType" value="publication" onchange="toggleProductIdField()"> 
+                    Publication
+                </label>
+            </div>
+        </div>
+
+        <div class="form-group" id="productIdGroup">
+            <label for="productId">Product ID:</label>
+            <input type="text" id="productId" placeholder="Enter product ID">
+            <small>Enter the ID of the Test Series or Online Course you want to purchase</small>
+        </div>
+
+        <div class="form-group">
+            <label for="couponCode">Coupon Code (Optional):</label>
+            <input type="text" id="couponCode" placeholder="Enter coupon code">
+            <small id="couponInfo" style="color: #666; margin-top: 5px; display: block;">
+                Common coupons: <strong>WELCOME10</strong> (25% off Online Courses)<br>
+                Note: Coupons are category-specific
+            </small>
+        </div>
+
+        <button onclick="createOrder()" id="createOrderBtn" disabled>Create Order</button>
+        <button onclick="showProductInfo()" class="btn-warning">Show Product Info</button>
+        
+        <div id="productInfo" class="product-info hidden"></div>
+        <div id="orderResult" class="result-container"></div>
+    </div>
+
+    <!-- Payment Section -->
+    <div class="container hidden" id="paymentSection">
+        <h2 class="section-title">Payment</h2>
+        <div class="form-group">
+            <div id="orderSummary"></div>
+        </div>
+        <button onclick="initiatePayment()" id="payNowBtn" class="btn-success">Pay Now with Razorpay</button>
+        <div id="paymentResult" class="result-container"></div>
+    </div>
+
+    <!-- Verification Section -->
+    <div class="container hidden" id="verificationSection">
+        <h2 class="section-title">Verify Payment</h2>
+        <div id="verificationResult" class="result-container"></div>
+    </div>
+
+    <!-- Loading Indicator -->
+    <div class="loading" id="loadingIndicator">
+        <div class="spinner"></div>
+        <p>Please wait...</p>
+    </div>
+
+    <script>
+        let token = localStorage.getItem('jwtToken') || '';
+        let apiBaseUrl = localStorage.getItem('apiBaseUrl') || 'http://localhost:3000';
+        
+        // Safety guard: remove /api/v1 if it's incorrectly appended to base URL
+        if (apiBaseUrl.endsWith('/api/v1')) {
+            apiBaseUrl = apiBaseUrl.replace('/api/v1', '');
+            localStorage.setItem('apiBaseUrl', apiBaseUrl);
+        }
+        
+        let currentOrder = null;
+        let currentProduct = null;
+
+        // Initialize the page
+        document.addEventListener('DOMContentLoaded', function() {
+            // Load saved token if exists
+            if (token) {
+                document.getElementById('jwtToken').value = token;
+                document.getElementById('authStatus').innerHTML = '<div class="success">Token loaded from storage</div>';
+                document.getElementById('createOrderBtn').disabled = false;
+            }
+            
+            // Load saved API base URL if exists and apply safety guard
+            if (localStorage.getItem('apiBaseUrl')) {
+                let storedBaseUrl = localStorage.getItem('apiBaseUrl');
+                // Apply safety guard to stored value too
+                if (storedBaseUrl.endsWith('/api/v1')) {
+                    storedBaseUrl = storedBaseUrl.replace('/api/v1', '');
+                    localStorage.setItem('apiBaseUrl', storedBaseUrl);
+                }
+                document.getElementById('apiBaseUrl').value = storedBaseUrl;
+            }
+        });
+
+        // Save token and API base URL
+        function saveToken() {
+            const jwtToken = document.getElementById('jwtToken').value.trim();
+            let baseUrl = document.getElementById('apiBaseUrl').value.trim();
+            
+            // Apply safety guard to input value too
+            if (baseUrl.endsWith('/api/v1')) {
+                baseUrl = baseUrl.replace('/api/v1', '');
+                document.getElementById('apiBaseUrl').value = baseUrl;
+            }
+            
+            if (!jwtToken) {
+                showAuthStatus('Please enter a valid JWT token', 'error');
+                return;
+            }
+            
+            if (!baseUrl) {
+                showAuthStatus('Please enter a valid API base URL', 'error');
+                return;
+            }
+
+            token = jwtToken;
+            apiBaseUrl = baseUrl;
+            
+            localStorage.setItem('jwtToken', token);
+            localStorage.setItem('apiBaseUrl', apiBaseUrl);
+            
+            showAuthStatus('Token and settings saved successfully! Base URL normalized: ' + apiBaseUrl, 'success');
+            document.getElementById('createOrderBtn').disabled = false;
+        }
+
+        function showAuthStatus(message, type) {
+            const statusDiv = document.getElementById('authStatus');
+            statusDiv.innerHTML = `<div class="${type}">${message}</div>`;
+            
+            setTimeout(() => {
+                statusDiv.innerHTML = '';
+            }, 3000);
+        }
+
+        // Toggle product ID field based on selection
+        function toggleProductIdField() {
+            const productType = document.querySelector('input[name="productType"]:checked').value;
+            const productIdLabel = document.querySelector('#productIdGroup label');
+            
+            // Update label based on product type
+            if (productType === 'test_series') {
+                productIdLabel.textContent = 'Test Series ID:';
+            } else if (productType === 'online_course') {
+                productIdLabel.textContent = 'Course ID:';
+            } else {
+                productIdLabel.textContent = 'Publication ID:';
+            }
+            
+            // Update coupon info based on product type
+            const couponInfo = document.getElementById('couponInfo');
+            if (productType === 'test_series') {
+                couponInfo.innerHTML = `
+                    Common coupons: <strong>WELCOME10</strong> (25% off Online Courses)<br>
+                    <span style="color: #e74c3c;">⚠ WELCOME10 is NOT applicable to Test Series</span>
+                `;
+            } else if (productType === 'online_course') {
+                couponInfo.innerHTML = `
+                    Common coupons: <strong>WELCOME10</strong> (25% off Online Courses)<br>
+                    <span style="color: #27ae60;">✓ WELCOME10 IS applicable to Online Courses</span>
+                `;
+            } else {
+                couponInfo.innerHTML = `
+                    Publications: Fixed price items<br>
+                    <span style="color: #7f8c8d;">No coupon discounts available for Publications</span>
+                `;
+            }
+        }
+
+        // Create order
+        async function createOrder() {
+            const productType = document.querySelector('input[name="productType"]:checked').value;
+            const productId = document.getElementById('productId').value.trim();
+            const couponCode = document.getElementById('couponCode').value.trim();
+
+            if (!productId) {
+                showResult('Please enter a product ID', 'error', 'orderResult');
+                return;
+            }
+
+            // Frontend validation for product ID format using regex
+            const objectIdRegex = /^[a-fA-F0-9]{24}$/;
+            if (productType === 'online_course' && !objectIdRegex.test(productId)) {
+                showResult('Please enter a valid ONLINE COURSE ID (24-character hex string)', 'error', 'orderResult');
+                return;
+            }
+            
+            if (productType === 'test_series' && !objectIdRegex.test(productId)) {
+                showResult('Please enter a valid TEST SERIES ID (24-character hex string)', 'error', 'orderResult');
+                return;
+            }
+            
+            if (productType === 'publication' && !objectIdRegex.test(productId)) {
+                showResult('Please enter a valid PUBLICATION ID (24-character hex string)', 'error', 'orderResult');
+                return;
+            }
+
+            if (!token) {
+                showResult('Please save your JWT token first', 'error', 'orderResult');
+                return;
+            }
+
+            showLoading(true);
+
+            try {
+                // Normalize itemType to use consistent snake_case format for backend
+                const normalizedItemType = productType === 'online_course' ? 'online_course' : 'test_series';
+
+                const items = [{
+                    itemType: normalizedItemType,
+                    itemId: productId,
+                    quantity: 1
+                }];
+
+                const payload = {
+                    items: items
+                };
+
+                if (couponCode) {
+                    payload.couponCode = couponCode;
+                }
+
+                console.log('Creating order with payload:', payload);
+                console.log('API Base URL:', apiBaseUrl);
+                console.log('Full API Endpoint:', `${apiBaseUrl}/api/payment/create-order`);
+
+                const response = await fetch(`${apiBaseUrl}/api/payment/create-order`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                // Log raw response to debug
+                const responseText = await response.text();
+                console.log('RAW RESPONSE:', responseText);
+
+                let responseData = {};
+                if (responseText) {
+                    try {
+                        responseData = JSON.parse(responseText);
+                    } catch (e) {
+                        console.error('Error parsing response JSON:', e);
+                        showResult(`Error parsing response: ${e.message}`, 'error', 'orderResult');
+                        return;
+                    }
+                }
+
+                console.log('Order response:', responseData);
+
+                // Flexible success check to handle different response formats
+                const isSuccess = response.ok && (
+                    responseData.success === true || 
+                    responseData.status === true || 
+                    (responseData.data && !responseData.error)
+                );
+
+                if (isSuccess) {
+                    currentOrder = {
+                      ...(responseData.data || responseData.order),
+                      pricing: responseData.pricing || null
+                    };
+                    currentProduct = {
+                        type: productType,
+                        id: productId
+                    };
+                    
+                    // Extract the correct order ID for Razorpay - prioritize 'id' field from backend
+                    const orderId = currentOrder.id || currentOrder.orderId || currentOrder.razorpayOrderId || 'N/A';
+                    const amount = currentOrder.amount || 0;
+                    
+                    // Check if coupon was applied successfully
+                    const couponStatus = currentOrder.couponApplied ? 
+                      `<span style="color: green; font-weight: bold;">✓ Coupon Applied (${currentOrder.discountAmount ? `₹${currentOrder.discountAmount} discount` : 'Valid'})</span>` : 
+                      (couponCode ? `<span style="color: #e74c3c; font-weight: bold;">❌ Coupon Not Applicable</span>` : '<span style="color: #7f8c8d;">No coupon applied</span>');
+                    
+                    showResult(`Order created successfully!<br>
+                              Order ID: ${orderId}<br>
+                              Amount: ₹${amount}<br>
+                              ${currentOrder.originalAmount && currentOrder.originalAmount !== amount ? `Original Amount: ₹${currentOrder.originalAmount}<br>` : ''}
+                              ${currentOrder.discountAmount ? `Discount: -₹${currentOrder.discountAmount}<br>` : ''}
+                              ${couponCode ? `Coupon Status: ${couponStatus}<br>` : ''}
+                              Currency: ${currentOrder.currency || 'INR'}`, 'success', 'orderResult');
+                    
+                    document.getElementById('orderSummary').innerHTML = `
+                        <h3>Order Summary</h3>
+                        <p><strong>Product Type:</strong> ${productType.replace('_', ' ').toUpperCase()}</p>
+                        <p><strong>Product ID:</strong> ${productId}</p>
+                        <p><strong>Order ID:</strong> ${orderId}</p>
+                        <p><strong>Amount:</strong> ₹${amount}</p>
+                        ${currentOrder.originalAmount && currentOrder.originalAmount !== amount ? `<p><strong>Original Amount:</strong> ₹${currentOrder.originalAmount}</p>` : ''}
+                        ${currentOrder.discountAmount ? `<p><strong>Discount:</strong> -₹${currentOrder.discountAmount}</p>` : ''}
+                        <p><strong>Currency:</strong> ${currentOrder.currency || 'INR'}</p>
+                        ${productType === 'publication' ? '<p><strong>Note:</strong> Publications are fixed-price items</p>' : ''}
+                        ${couponCode ? `<p><strong>Coupon Status:</strong> ${couponStatus}</p>` : ''}
+                        ${currentOrder.invoiceId ? `<p><strong>Invoice ID:</strong> ${currentOrder.invoiceId}</p>` : ''}
+                        ${currentOrder.refundable !== undefined ? `<p><strong>Refundable:</strong> ${currentOrder.refundable ? 'Yes' : 'No'}</p>` : ''}
+                    `;
+                    
+                    document.getElementById('paymentSection').classList.remove('hidden');
+                    document.getElementById('paymentSection').scrollIntoView({ behavior: 'smooth' });
+                } else {
+                    // Handle specific error cases
+                    const errorMessage = responseData.message || responseData.error || 'Unknown error';
+                    
+                    // Check for coupon-specific errors
+                    if (errorMessage.includes('Coupon is not applicable') || 
+                        errorMessage.includes('applicable to the selected items')) {
+                        showResult(`
+                            <div class="error" style="text-align: left;">
+                                <h4>❌ Coupon Error</h4>
+                                <p><strong>Message:</strong> ${errorMessage}</p>
+                                <p><strong>Product:</strong> ${productType.replace('_', ' ').toUpperCase()}</p>
+                                <p><strong>Coupon Code:</strong> ${couponCode || 'None provided'}</p>
+                                <p style="margin-top: 10px;"><em>💡 Try a different coupon or proceed without coupon</em></p>
+                            </div>
+                        `, '', 'orderResult');
+                    } else if (errorMessage.includes('Minimum purchase amount')) {
+                        showResult(`
+                            <div class="error" style="text-align: left;">
+                                <h4>⚠️ Minimum Amount Required</h4>
+                                <p><strong>Message:</strong> ${errorMessage}</p>
+                                <p><strong>Current Total:</strong> ₹${responseData.order?.baseTotal || 'N/A'}</p>
+                                <p style="margin-top: 10px;"><em>💡 Add more items or remove the coupon</em></p>
+                            </div>
+                        `, '', 'orderResult');
+                    } else {
+                        showResult(`Failed to create order: ${errorMessage}`, 'error', 'orderResult');
+                    }
+                }
+            } catch (error) {
+                console.error('Error creating order:', error);
+                showResult(`Error creating order: ${error.message}`, 'error', 'orderResult');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Show product info
+        async function showProductInfo() {
+            const productType = document.querySelector('input[name="productType"]:checked').value;
+            const productId = document.getElementById('productId').value.trim();
+
+            if (!productId) {
+                showResult('Please enter a product ID first', 'error', 'productInfo');
+                return;
+            }
+
+            // Frontend validation for product ID format using regex
+            const objectIdRegex = /^[a-fA-F0-9]{24}$/;
+            if (productType === 'online_course' && !objectIdRegex.test(productId)) {
+                showResult('Please enter a valid ONLINE COURSE ID (24-character hex string)', 'error', 'productInfo');
+                return;
+            }
+            
+            if (productType === 'test_series' && !objectIdRegex.test(productId)) {
+                showResult('Please enter a valid TEST SERIES ID (24-character hex string)', 'error', 'productInfo');
+                return;
+            }
+            
+            if (productType === 'publication' && !objectIdRegex.test(productId)) {
+                showResult('Please enter a valid PUBLICATION ID (24-character hex string)', 'error', 'productInfo');
+                return;
+            }
+
+            if (!token) {
+                showResult('Please save your JWT token first', 'error', 'productInfo');
+                return;
+            }
+
+            showLoading(true);
+
+            try {
+                let endpoint = '';
+                if (productType === 'test_series') {
+                    endpoint = `${apiBaseUrl}/api/v1/test-series/${productId}`;
+                } else if (productType === 'online_course') {
+                    endpoint = `${apiBaseUrl}/api/users/courses/${productId}`;
+                } else {
+                    endpoint = `${apiBaseUrl}/api/users/publications/${productId}`;
+                }
+
+                console.log('Fetching product info from:', endpoint);
+
+                const response = await fetch(endpoint, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                // Log raw response to debug
+                const responseText = await response.text();
+                console.log('Product Info RAW RESPONSE:', responseText);
+
+                let responseData = {};
+                if (responseText) {
+                    try {
+                        responseData = JSON.parse(responseText);
+                    } catch (e) {
+                        console.error('Error parsing product info response JSON:', e);
+                        showResult(`Error parsing product info response: ${e.message}`, 'error', 'productInfo');
+                        return;
+                    }
+                }
+
+                console.log('Product info response:', responseData);
+
+                // Flexible success check for different response formats
+                const isSuccess = response.ok && (
+                    responseData.success === true || 
+                    responseData.status === true || 
+                    (responseData.data && !responseData.error)
+                );
+
+                if (isSuccess) {
+                    const product = responseData.data;
+                    let infoHtml = `
+                        <h3>Product Information</h3>
+                        <p><strong>Name:</strong> ${product.name || product.title || 'N/A'}</p>
+                        <p><strong>ID:</strong> ${product._id}</p>
+                        <p><strong>Type:</strong> ${productType.replace('_', ' ').toUpperCase()}</p>
+                    `;
+
+                    if (productType === 'test_series') {
+                        infoHtml += `
+                            <p><strong>Original Price:</strong> ₹${product.originalPrice || product.price || 'N/A'}</p>
+                            <p><strong>Description:</strong> ${product.description || 'N/A'}</p>
+                            <p><strong>Tests Count:</strong> ${product.testsCount || product.tests?.length || 0}</p>
+                        `;
+                    } else if (productType === 'online_course') {
+                        infoHtml += `
+                            <p><strong>Original Price:</strong> ₹${product.originalPrice || 'N/A'}</p>
+                            <p><strong>Discount Price:</strong> ₹${product.discountPrice || 'N/A'}</p>
+                            <p><strong>Final Price:</strong> ₹${product.finalPrice || product.discountPrice || product.originalPrice || '0'}</p>
+                            <p><strong>Description:</strong> ${product.description || 'N/A'}</p>
+                            <p><strong>Classes:</strong> ${product.classes ? product.classes.length : 0}</p>
+                        `;
+                    } else {
+                        infoHtml += `
+                            <p><strong>Price:</strong> ₹${product.price || 'N/A'}</p>
+                            <p><strong>Description:</strong> ${product.description || 'N/A'}</p>
+                            <p><strong>Author:</strong> ${product.author || 'N/A'}</p>
+                            <p><strong>Publisher:</strong> ${product.publisher || 'N/A'}</p>
+                        `;
+                    }
+
+                    document.getElementById('productInfo').innerHTML = infoHtml;
+                    document.getElementById('productInfo').classList.remove('hidden');
+                } else {
+                    showResult(`Failed to fetch product info: ${responseData.message || responseData.error || 'Unknown error'}`, 'error', 'productInfo');
+                }
+            } catch (error) {
+                console.error('Error fetching product info:', error);
+                showResult(`Error fetching product info: ${error.message}`, 'error', 'productInfo');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Initiate payment with Razorpay
+        function initiatePayment() {
+            if (!currentOrder) {
+                showResult('No order available. Please create an order first.', 'error', 'paymentResult');
+                return;
+            }
+
+            // Get the correct order ID for Razorpay - prioritize 'id' field from backend
+            const orderId = currentOrder.id || currentOrder.orderId || currentOrder.razorpayOrderId;
+
+            // Determine the correct amount for Razorpay - use only the exact amount from backend
+            const razorpayAmount = currentOrder.amountInPaise ?? currentOrder.amount * 100;
+
+            // Prefill user info if available
+            const userInfo = {
+              name: 'John Doe', // Replace with actual user data
+              email: 'john.doe@example.com', // Replace with actual user data
+              contact: '9876543210' // Replace with actual user data
+            };
+            
+            const options = {
+                key: "rzp_test_RPLRzNCjuNmGdU", // Test key - replace with your key
+                amount: razorpayAmount, // Use the correct amount in paise
+                currency: currentOrder.currency || 'INR',
+                name: 'Brain Buzz Learning Platform',
+                description: 'Payment for courses and test series',
+                order_id: orderId, // Use the correct order ID
+                handler: function (response) {
+                    showResult(`
+                        <div class="success">
+                            <h3>Payment Successful!</h3>
+                            <p><strong>Razorpay Payment ID:</strong> ${response.razorpay_payment_id}</p>
+                            <p><strong>Razorpay Order ID:</strong> ${response.razorpay_order_id}</p>
+                            <p><strong>Razorpay Signature:</strong> ${response.razorpay_signature}</p>
+                        </div>
+                    `, '', 'paymentResult');
+
+                    // Automatically verify payment
+                    verifyPayment(response.razorpay_order_id, response.razorpay_payment_id, response.razorpay_signature);
+                    
+                    // Re-enable button after success
+                    document.getElementById('payNowBtn').disabled = false;
+                    document.getElementById('payNowBtn').textContent = 'Pay Now';
+                },
+                prefill: {
+                    name: userInfo.name,
+                    email: userInfo.email,
+                    contact: userInfo.contact
+                },
+                theme: {
+                    color: '#3399cc'
+                }
+            };
+            
+            const rzp = new Razorpay(options);
+            
+            rzp.on('payment.failed', function (response) {
+                showResult(`
+                    <div class="error">
+                        <h3>Payment Failed</h3>
+                        <p><strong>Error Code:</strong> ${response.error.code}</p>
+                        <p><strong>Description:</strong> ${response.error.description}</p>
+                        <p><strong>Source:</strong> ${response.error.source}</p>
+                    </div>
+                `, '', 'paymentResult');
+                
+                // Re-enable button after failure
+                document.getElementById('payNowBtn').disabled = false;
+                document.getElementById('payNowBtn').textContent = 'Pay Now';
+            });
+            
+            rzp.open();
+            
+            // Disable button to prevent multiple clicks
+            document.getElementById('payNowBtn').disabled = true;
+            document.getElementById('payNowBtn').textContent = 'Processing...';
+        }
+
+        // Verify payment
+        async function verifyPayment(razorpayOrderId, razorpayPaymentId, razorpaySignature) {
+            showLoading(true);
+
+            try {
+                const payload = {
+                    razorpay_order_id: razorpayOrderId,
+                    razorpay_payment_id: razorpayPaymentId,
+                    razorpay_signature: razorpaySignature
+                };
+
+                console.log('Verifying payment with payload:', payload);
+                console.log('API Base URL:', apiBaseUrl);
+                console.log('Full API Endpoint:', `${apiBaseUrl}/api/payment/verify`);
+
+                const response = await fetch(`${apiBaseUrl}/api/payment/verify`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                // Log raw response to debug
+                const responseText = await response.text();
+                console.log('Verification RAW RESPONSE:', responseText);
+
+                let responseData = {};
+                if (responseText) {
+                    try {
+                        responseData = JSON.parse(responseText);
+                    } catch (e) {
+                        console.error('Error parsing verification response JSON:', e);
+                        document.getElementById('verificationSection').classList.remove('hidden');
+                        document.getElementById('verificationSection').scrollIntoView({ behavior: 'smooth' });
+                        
+                        document.getElementById('verificationResult').innerHTML = `
+                            <div class="error">
+                                <h3>Error Parsing Verification Response</h3>
+                                <p><strong>Error:</strong> ${e.message}</p>
+                                <p><strong>Raw Response:</strong> ${responseText.substring(0, 200)}...</p>
+                            </div>
+                        `;
+                        return;
+                    }
+                }
+
+                console.log('Verification response:', responseData);
+
+                // Flexible success check for different response formats
+                const isSuccess = response.ok && (
+                    responseData.success === true || 
+                    responseData.status === true || 
+                    (responseData.data && !responseData.error)
+                );
+
+                if (isSuccess) {
+                    document.getElementById('verificationSection').classList.remove('hidden');
+                    document.getElementById('verificationSection').scrollIntoView({ behavior: 'smooth' });
+                    
+                    document.getElementById('verificationResult').innerHTML = `
+                        <div class="success">
+                            <h3>Payment Verified Successfully!</h3>
+                            <p><strong>Message:</strong> ${responseData.message || 'Payment verified and order completed successfully'}</p>
+                            <p><strong>Order ID:</strong> ${responseData.data?.orderId || responseData.orderId || 'N/A'}</p>
+                            <p><strong>Payment ID:</strong> ${responseData.data?.paymentId || responseData.paymentId || 'N/A'}</p>
+                            <p>You now have access to your purchased ${currentProduct.type.replace('_', ' ')}. Thank you for your purchase!</p>
+                        </div>
+                    `;
+                } else {
+                    document.getElementById('verificationSection').classList.remove('hidden');
+                    document.getElementById('verificationSection').scrollIntoView({ behavior: 'smooth' });
+                    
+                    document.getElementById('verificationResult').innerHTML = `
+                        <div class="error">
+                            <h3>Verification Failed</h3>
+                            <p><strong>Error:</strong> ${responseData.message || responseData.error || 'Payment verification failed'}</p>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('Error verifying payment:', error);
+                document.getElementById('verificationSection').classList.remove('hidden');
+                document.getElementById('verificationSection').scrollIntoView({ behavior: 'smooth' });
+                
+                document.getElementById('verificationResult').innerHTML = `
+                    <div class="error">
+                        <h3>Error Verifying Payment</h3>
+                        <p><strong>Error:</strong> ${error.message}</p>
+                    </div>
+                `;
+            } finally {
+                showLoading(false);
+                // Re-enable button in case of error
+                document.getElementById('payNowBtn').disabled = false;
+                document.getElementById('payNowBtn').textContent = 'Pay Now';
+            }
+        }
+
+        // Utility functions
+        function showResult(message, type, containerId) {
+            const container = document.getElementById(containerId);
+            if (type === 'success') {
+                container.innerHTML = `<div class="success">${message}</div>`;
+            } else if (type === 'error') {
+                container.innerHTML = `<div class="error">${message}</div>`;
+            } else {
+                container.innerHTML = message;
+            }
+        }
+
+        function showLoading(show) {
+            const loadingElement = document.getElementById('loadingIndicator');
+            if (show) {
+                loadingElement.style.display = 'block';
+            } else {
+                loadingElement.style.display = 'none';
+            }
+        }
+    </script>
+</body>
+</html>

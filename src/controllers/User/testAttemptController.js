@@ -4,6 +4,9 @@ const TestRanking = require('../../models/TestSeries/TestRanking');
 const Cutoff = require('../../models/TestSeries/Cutoff');
 const User = require('../../models/User/User');
 
+// Import dynamic cron manager
+const dynamicCronManager = require('../../../utils/dynamicCronManager');
+
 // Import TestSeriesAccessService
 const TestSeriesAccessService = require('../../../services/testSeriesAccessService');
 
@@ -163,6 +166,9 @@ exports.startTest = async (req, res) => {
         testSnapshot: testSnapshot,
         status: 'IN_PROGRESS'
       });
+
+      // Start the auto-submit job since a new test has started
+      dynamicCronManager.startAutoSubmitJob();
 
       return res.status(201).json({
         success: true,
@@ -589,6 +595,9 @@ exports.submitTest = async (req, res) => {
       }
     });
 
+    // Stop the auto-submit job since this test is now submitted/completed
+    dynamicCronManager.stopAutoSubmitJob();
+
     // Update ranking asynchronously to improve performance
     setImmediate(async () => {
       try {
@@ -723,6 +732,9 @@ const autoSubmitOnTimeExpiry = async (attemptId, seriesId, testId) => {
         console.error('Error updating ranking in auto-submit:', error);
       }
     });
+
+    // Stop the auto-submit job since this test is now auto-submitted
+    dynamicCronManager.stopAutoSubmitJob();
 
     console.log(`Auto-submitted test attempt ${attemptId} due to time expiry`);
   } catch (error) {

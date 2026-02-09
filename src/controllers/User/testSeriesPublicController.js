@@ -223,6 +223,9 @@ exports.getPublicTestSeriesById = async (req, res) => {
       };
     });
 
+    // Use pre-calculated finalPrice from the model
+    const finalPrice = series.finalPrice ?? calculateFinalPrice(series.originalPrice, series.discount);
+    
     return res.status(200).json({
       success: true,
       data: {
@@ -238,6 +241,7 @@ exports.getPublicTestSeriesById = async (req, res) => {
         validity: series.validity,
         originalPrice: series.originalPrice,
         discount: series.discount,
+        finalPrice: finalPrice,
         tests,
         hasAccess
       }
@@ -539,8 +543,8 @@ exports.listTestSeries = async (req, res) => {
         const hasPurchased = await checkTestSeriesAccess(userId, series._id);
         const seriesObj = series.toObject();
         
-        // Calculate finalPrice
-        const finalPrice = calculateFinalPrice(seriesObj.originalPrice, seriesObj.discount);
+        // Use pre-calculated finalPrice from the model
+        const finalPrice = seriesObj.finalPrice ?? calculateFinalPrice(seriesObj.originalPrice, seriesObj.discount);
         
         // Return only the requested fields
         const filteredSeries = {

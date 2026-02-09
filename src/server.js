@@ -2,8 +2,7 @@ require('dotenv').config();
 const http = require('http');
 const app = require('./app');
 const connectDB = require('./config/db');
-const cron = require('node-cron'); // Import node-cron for scheduling
-const { processExpiredAttempts } = require('../utils/examAutoSubmit'); // Import the CBT-compliant auto-submit function
+const dynamicCronManager = require('../utils/dynamicCronManager'); // Import dynamic cron manager
 
 // Load PYQ models
 require('./models/Course/Exam');
@@ -19,12 +18,11 @@ const server = http.createServer(app);
 
 connectDB();
 
-// Schedule the auto-submit job to run every 30 seconds (CBT requirement)
-// This will automatically submit tests that have exceeded their time limit
-cron.schedule('*/30 * * * * *', async () => {  // Every 30 seconds
-  console.log('Running scheduled auto-submit check...');
-  await processExpiredAttempts();
-});
+// Initialize the dynamic cron manager to handle auto-submit jobs
+// The job will start when users begin tests and stop when all tests are completed
+dynamicCronManager.initializeFromDatabase();
+
+console.log('Dynamic cron manager initialized');
 
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);

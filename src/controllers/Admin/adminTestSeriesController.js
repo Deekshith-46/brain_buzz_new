@@ -56,6 +56,7 @@ exports.getAllTestSeries = async (req, res) => {
         languages: series.languages,
         originalPrice: series.originalPrice,
         discount: series.discount,
+        finalPrice: series.finalPrice,
         isActive: series.isActive,
         createdAt: series.createdAt,
         updatedAt: series.updatedAt
@@ -122,6 +123,7 @@ exports.getTestSeriesById = async (req, res) => {
       languages: testSeries.languages,
       originalPrice: testSeries.originalPrice,
       discount: testSeries.discount,
+      finalPrice: testSeries.finalPrice,
       isActive: testSeries.isActive,
       createdAt: testSeries.createdAt,
       updatedAt: testSeries.updatedAt,

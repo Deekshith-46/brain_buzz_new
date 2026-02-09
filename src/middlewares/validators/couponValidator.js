@@ -91,7 +91,7 @@ exports.validateCouponCreation = [
       if (!Array.isArray(items)) return true;
       
       return items.every(item => {
-        if (!['test_series', 'online_course', 'all'].includes(item.itemType)) {
+        if (!['test_series', 'online_course', 'publication', 'all'].includes(item.itemType)) {
           throw new Error('Invalid item type in applicable items');
         }
         return true;

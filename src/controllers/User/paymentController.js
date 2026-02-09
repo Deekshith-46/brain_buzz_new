@@ -8,6 +8,8 @@ const { createOrder } = require('../../utils/orderUtils');
 const Order = require('../../models/Order/Order');
 const Purchase = require('../../models/Purchase/Purchase');
 const { PurchaseService } = require('../../../services');
+const { getOriginalPrice, getFinalPrice, calculateBaseTotal, calculateOriginalTotal, calculateProductDiscountTotal } = require('../../utils/pricingUtils');
+const { resolveCoupon: resolveCouponUtil, calculateCouponDiscount } = require('../../utils/couponUtils');
 
 // Initialize Razorpay
 const razorpay = new Razorpay({
@@ -36,27 +38,7 @@ exports.getTestSeriesPrice = async (req, res) => {
     let couponDiscount = 0;
     let coupon = null;
 
-    // Apply coupon if provided
-    if (couponCode) {
-      coupon = await Coupon.findOne({
-        code: couponCode,
-        isActive: true,
-        validFrom: { $lte: new Date() },
-        validUntil: { $gte: new Date() },
-        'applicableItems.itemId': testSeriesId
-      });
-
-      if (coupon) {
-        if (coupon.discountType === 'percentage') {
-          couponDiscount = (finalPrice * coupon.discountValue) / 100;
-        } else if (coupon.discountType === 'fixed') {
-          couponDiscount = coupon.discountValue;
-        }
-        // Ensure coupon discount doesn't make price negative
-        finalPrice = Math.max(0, finalPrice - couponDiscount);
-        discountApplied = testSeries.price - finalPrice;
-      }
-    }
+// Coupon logic moved to order creation stage - price APIs should return product price only
 
     const response = {
       success: true,
@@ -115,28 +97,7 @@ exports.getCoursePrice = async (req, res) => {
 
     let coupon = null;
     let couponDiscount = 0;
-    if (couponCode) {
-      const code = couponCode.toUpperCase();
-      coupon = await Coupon.findOne({
-        code,
-        isActive: true,
-        validFrom: { $lte: new Date() },
-        validUntil: { $gte: new Date() },
-        $or: [
-          { 'applicableItems.itemType': 'all' },
-          { 'applicableItems.itemType': 'online_course', 'applicableItems.itemId': courseId },
-        ],
-      });
-
-      if (coupon) {
-        if (coupon.discountType === 'percentage') {
-          couponDiscount = (finalPrice * coupon.discountValue) / 100;
-        } else if (coupon.discountType === 'fixed') {
-          couponDiscount = coupon.discountValue;
-        }
-        finalPrice = Math.max(0, finalPrice - couponDiscount);
-      }
-    }
+// Coupon logic moved to order creation stage - price APIs should return product price only
 
     const response = {
       success: true,
@@ -175,110 +136,29 @@ const mapOrderItemType = (itemType) => {
 };
 
 const computeBasePrice = async (item) => {
-  if (item.itemType === 'test_series') {
-    const priceResp = await exports.getTestSeriesPrice(
-      { params: { testSeriesId: item.itemId }, query: {} },
-      null
-    );
-    if (!priceResp?.success) throw new Error('Failed to get test series price');
-    return priceResp.data.finalPrice;
-  }
-  if (item.itemType === 'online_course') {
-    const priceResp = await exports.getCoursePrice(
-      { params: { courseId: item.itemId }, query: {} },
-      null
-    );
-    if (!priceResp?.success) throw new Error('Failed to get course price');
-    return priceResp.data.finalPrice;
-  }
-  throw new Error('Unsupported itemType');
+  const { getOriginalPrice } = require('../../utils/pricingUtils');
+  
+  return await getOriginalPrice(item);
 };
 
 const resolveCoupon = async (couponCode, items, userId = null) => {
-  if (!couponCode) return { coupon: null, discount: 0 };
-  const code = couponCode.toUpperCase();
-  
-  // First, find the coupon by code and basic validity
-  let coupon = await Coupon.findOne({
-    code,
-    isActive: true,
-    validFrom: { $lte: new Date() },
-    validUntil: { $gte: new Date() },
-  });
-  
-  if (!coupon) {
-    console.log(`Coupon ${code} not found or expired`);
+  // Use centralized coupon utility
+  try {
+    const coupon = await require('../../utils/couponUtils').resolveCoupon(couponCode, items, userId);
+    return { coupon, discount: 0 };
+  } catch (error) {
+    console.log('Coupon resolution error:', error.message);
     return { coupon: null, discount: 0 };
   }
-  
-  // Check if coupon has reached maxUses limit
-  if (coupon.maxUses !== null && coupon.maxUses !== undefined && coupon.usedCount >= coupon.maxUses) {
-    console.log(`Coupon ${code} has reached maximum uses (${coupon.usedCount}/${coupon.maxUses})`);
-    return { coupon: null, discount: 0 };
-  }
-  
-  // Check if user has exceeded maxUsesPerUser limit
-  if (userId && coupon.maxUsesPerUser !== null && coupon.maxUsesPerUser !== undefined) {
-    const Purchase = require('../../models/Purchase/Purchase');
-    const userCouponUsage = await Purchase.countDocuments({
-      user: userId,
-      'coupon.code': code,
-      status: 'completed'
-    });
-    
-    if (userCouponUsage >= coupon.maxUsesPerUser) {
-      console.log(`User has exceeded max uses per user for coupon ${code} (${userCouponUsage}/${coupon.maxUsesPerUser})`);
-      return { coupon: null, discount: 0 };
-    }
-  }
-  
-  // Check if coupon is applicable to any of the items
-  const isApplicable = coupon.applicableItems.some(applicableItem => {
-    // Check if coupon applies to all items
-    if (applicableItem.itemType === 'all') {
-      return true;
-    }
-    
-    // Check if coupon applies to any of the items in the order
-    return items.some(item => {
-      // Match item type
-      if (item.itemType !== applicableItem.itemType) {
-        return false;
-      }
-      
-      // If coupon has no specific itemId, it applies to all items of this type
-      if (!applicableItem.itemId) {
-        return true;
-      }
-      
-      // Otherwise, check if itemId matches
-      return applicableItem.itemId.toString() === item.itemId.toString();
-    });
-  });
-  
-  if (!isApplicable) {
-    console.log(`Coupon ${code} found but not applicable to items:`, items);
-    return { coupon: null, discount: 0 };
-  }
-  
-  console.log(`Coupon ${code} found and will be applied:`, {
-    discountType: coupon.discountType,
-    discountValue: coupon.discountValue,
-    minPurchaseAmount: coupon.minPurchaseAmount
-  });
-  
-  return { coupon, discount: 0 };
 };
 
 const applyCouponToTotal = (baseTotal, coupon) => {
   if (!coupon) return { finalAmount: baseTotal, discountAmount: 0 };
-  let discountAmount = 0;
-  if (coupon.discountType === 'percentage') {
-    discountAmount = (baseTotal * coupon.discountValue) / 100;
-  } else if (coupon.discountType === 'fixed') {
-    discountAmount = Math.min(coupon.discountValue, baseTotal);
-  }
+  
+  const { calculateCouponDiscount } = require('../../utils/couponUtils');
+  const discountAmount = calculateCouponDiscount(coupon, baseTotal);
   const finalAmount = Math.max(0, baseTotal - discountAmount);
+  
   return { finalAmount, discountAmount };
 };
 
@@ -298,20 +178,27 @@ exports.createOrder = async (req, res) => {
       return res.status(400).json({ success: false, message: 'items must be a non-empty array' });
     }
 
-    // Compute base total
-    let baseTotal = 0;
-    for (const item of items) {
-      const price = await computeBasePrice(item);
-      baseTotal += price;
-    }
+    // Compute base total (using final prices after product discounts)
+    const baseTotal = await calculateBaseTotal(items);
+    const originalTotal = await calculateOriginalTotal(items);
+    const productDiscountTotal = await calculateProductDiscountTotal(items);
+    
+    console.log(`Order creation - Original total: ${originalTotal}, Product discount: ${productDiscountTotal}, Base total: ${baseTotal}, Coupon code: ${couponCode || 'none'}`);
 
     console.log(`Order creation - Base total: ${baseTotal}, Coupon code: ${couponCode || 'none'}`);
 
-    // Resolve coupon (if any) and apply on total
-    const { coupon, discount } = await resolveCoupon(couponCode, items, userId);
+    // Resolve coupon (if any) with strict validation
+    let coupon = null;
     
-    if (couponCode && !coupon) {
-      console.warn(`Coupon code ${couponCode} was provided but coupon not found or not applicable`);
+    if (couponCode) {
+      try {
+        coupon = await resolveCouponUtil(couponCode, items, userId);
+      } catch (err) {
+        return res.status(400).json({
+          success: false,
+          message: err.message   // ❗ "Coupon is not applicable to the selected items"
+        });
+      }
     }
     
     // Check minimum purchase amount if coupon exists
@@ -330,7 +217,9 @@ exports.createOrder = async (req, res) => {
       });
     }
     
-    const { finalAmount, discountAmount } = applyCouponToTotal(baseTotal, coupon);
+    // Calculate discount using centralized utility
+    const discountAmount = coupon ? calculateCouponDiscount(coupon, baseTotal) : 0;
+    const finalAmount = Math.max(0, baseTotal - discountAmount);
     
     console.log(`Order creation - Final amount: ${finalAmount}, Discount: ${discountAmount}, Base: ${baseTotal}`);
 
@@ -403,29 +292,52 @@ exports.verifyPayment = async (req, res) => {
     const { items: itemsStr, userId, couponCode } = order.notes;
     const items = JSON.parse(itemsStr || '[]');
 
-    // Recompute pricing
-    let baseTotal = 0;
-    for (const item of items) {
-      const price = await computeBasePrice(item);
-      baseTotal += price;
+    // Recompute pricing using correct final prices
+    const baseTotal = await calculateBaseTotal(items);
+    const originalTotal = await calculateOriginalTotal(items);
+    const productDiscountTotal = await calculateProductDiscountTotal(items);
+    
+    console.log(`Payment verification - Original total: ${originalTotal}, Product discount: ${productDiscountTotal}, Base total: ${baseTotal}`);
+    
+    // Resolve coupon using centralized utility (should match createOrder validation)
+    let coupon = null;
+    if (couponCode) {
+      try {
+        coupon = await resolveCouponUtil(couponCode, items, userId);
+      } catch (err) {
+        console.warn(`Coupon validation failed during verification: ${err.message}`);
+        // Continue without coupon if validation fails during verification
+      }
     }
-    const { coupon } = await resolveCoupon(couponCode, items, userId);
-    const { finalAmount, discountAmount } = applyCouponToTotal(baseTotal, coupon);
+    // Calculate discount using centralized utility
+    const discountAmount = coupon ? calculateCouponDiscount(coupon, baseTotal) : 0;
+    const finalAmount = Math.max(0, baseTotal - discountAmount);
+    
+    // Calculate coupon-only discount (separate from product discount)
+    const couponOnlyDiscount = discountAmount;
 
-    // Build Order items mapping
-    // Calculate price per item (split evenly if multiple items)
-    const pricePerItem = finalAmount / items.length;
-    const orderItems = items.map((it) => ({
-      itemType: mapOrderItemType(it.itemType),
-      itemId: it.itemId,
-      price: pricePerItem,
-    }));
+    // Build Order items mapping with proper per-item pricing
+    const orderItems = [];
+    
+    for (const item of items) {
+      const originalPrice = await getOriginalPrice(item);
+      const finalPrice = await getFinalPrice(item);
+      orderItems.push({
+        itemType: mapOrderItemType(item.itemType),
+        itemId: item.itemId,
+        price: finalPrice,         // ✅ REQUIRED FIELD for Order schema (after product discounts)
+        originalPrice,             // Original price before any discounts
+        finalPrice,                // Final price after product discounts (before coupon)
+      });
+    }
 
     await Order.create({
       user: userId,
       orderId: razorpay_order_id,
       paymentId: razorpay_payment_id,
       amount: finalAmount,
+      originalAmount: originalTotal, // Store the true original MRP before any discounts
+      discountAmount: discountAmount, // Store total discount amount
       currency: 'INR',
       status: 'completed',
       items: orderItems,
@@ -440,6 +352,12 @@ exports.verifyPayment = async (req, res) => {
         ...order,
         amountInRupees: finalAmount,
       },
+      pricing: { // Store detailed pricing information
+        baseTotal,
+        productDiscount: productDiscountTotal,
+        couponDiscount: couponOnlyDiscount,
+        finalAmount
+      }
     });
 
     // Grant access per item
@@ -540,10 +458,16 @@ exports.verifyPayment = async (req, res) => {
     res.json({
       success: true,
       message: 'Payment verified successfully',
-      orderId: razorpay_order_id,
-      paymentId: razorpay_payment_id,
-      amount: finalAmount,
-      currency: 'INR'
+      data: {
+        orderId: razorpay_order_id,
+        paymentId: razorpay_payment_id,
+        amount: finalAmount,
+        originalAmount: originalTotal,
+        productDiscount: productDiscountTotal,
+        couponDiscount: couponOnlyDiscount,
+        discountAmount: discountAmount,
+        currency: 'INR'
+      }
     });
 
   } catch (error) {
@@ -602,11 +526,29 @@ exports.getOrderHistory = async (req, res) => {
       data: {
         orders: orders.map(order => ({
           ...order,
+          // Add originalAmount and discountAmount with safe fallback logic
+          originalAmount: typeof order.originalAmount === 'number' 
+            ? order.originalAmount 
+            : typeof order.pricing?.baseTotal === 'number' 
+            ? order.pricing.baseTotal 
+            : null,
+          discountAmount: typeof order.discountAmount === 'number' 
+            ? order.discountAmount 
+            : typeof order.pricing?.couponDiscount === 'number' || typeof order.pricing?.productDiscount === 'number'
+            ? (order.pricing.couponDiscount || 0) + (order.pricing.productDiscount || 0)
+            : 0,
           amount: Number(order.amount),
+          // Normalize itemType to snake_case
           items: order.items.map(item => ({
             ...item,
+            itemType: item.itemType.toLowerCase().includes('test') ? 'test_series' : 
+                     item.itemType.toLowerCase().includes('course') ? 'online_course' : 
+                     item.itemType,
             price: Number(item.price)
-          }))
+          })),
+          // Add invoiceId and refundable fields
+          invoiceId: `INV-${order._id.toString().substring(0, 8).toUpperCase()}-${new Date(order.createdAt).getFullYear()}`,
+          refundable: order.status === 'completed' && new Date() - new Date(order.createdAt) < 30 * 24 * 60 * 60 * 1000 // 30 days refund window
         })),
         total,
         page: Number(page),

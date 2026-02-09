@@ -4,6 +4,9 @@ const TestRanking = require('../../models/TestSeries/TestRanking');
 const Cutoff = require('../../models/TestSeries/Cutoff');
 const User = require('../../models/User/User');
 
+// Import dynamic cron manager
+const dynamicCronManager = require('../../../utils/dynamicCronManager');
+
 // Import TestSeriesAccessService
 const TestSeriesAccessService = require('../../../services/testSeriesAccessService');
 
@@ -114,6 +117,9 @@ exports.startTest = async (req, res) => {
       status: 'IN_PROGRESS',
       isAdminAttempt: true  // Flag for admin attempt
     });
+
+    // Start the auto-submit job since a new test has started
+    dynamicCronManager.startAutoSubmitJob();
 
     return res.status(201).json({
       success: true,
@@ -527,6 +533,9 @@ exports.submitTest = async (req, res) => {
     existingAttempt.resultGenerated = true;
 
     await existingAttempt.save();
+
+    // Stop the auto-submit job since this test is now submitted/completed
+    dynamicCronManager.stopAutoSubmitJob();
 
     // FOR ADMIN: Skip ranking and cutoff evaluation
     // Admin attempts don't affect leaderboard or cutoff calculations
