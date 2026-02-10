@@ -56,6 +56,8 @@ router.put('/:id/thumbnail', upload.single('thumbnail'), updateThumbnail);
 // Categories route
 router.put('/:id/categories', updateCategories);
 
+// Preview settings removed - previewPages is fixed, only isPreviewEnabled is controllable
+
 router.delete('/:id', deletePublication);
 
 module.exports = router;

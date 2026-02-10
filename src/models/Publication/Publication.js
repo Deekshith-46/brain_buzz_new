@@ -88,6 +88,11 @@ const publicationSchema = new mongoose.Schema(
       min: 0,
       max: 100,
     },
+    // ✅ NEW: Final price calculation (originalPrice - discountPrice)
+    finalPrice: {
+      type: Number,
+      min: 0,
+    },
     availableIn: {
       type: String,
       enum: Object.values(PUBLICATION_AVAILABILITY),
@@ -117,6 +122,20 @@ const publicationSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    // ✅ NEW: Digital access control fields
+    isPreviewEnabled: {
+      type: Boolean,
+      default: false
+    },
+    previewPages: {
+      type: Number,
+      default: 2, // fixed preview pages - admin only toggles isPreviewEnabled
+      immutable: true
+    },
+    previewFileUrl: {
+      type: String,
+      trim: true
+    },
     isActive: {
       type: Boolean,
       default: true,
@@ -126,6 +145,15 @@ const publicationSchema = new mongoose.Schema(
     timestamps: true,
   }
 );
+
+// Add a pre-save hook to automatically calculate and update finalPrice
+publicationSchema.pre('save', function(next) {
+  // Calculate finalPrice based on originalPrice and discountPrice
+  const basePrice = this.originalPrice || 0;
+  const discountAmount = this.discountPrice || 0;
+  this.finalPrice = Math.max(basePrice - discountAmount, 0);
+  next();
+});
 
 // Add a pre-save hook to validate categories and subcategories match the content type
 publicationSchema.pre('save', async function(next) {

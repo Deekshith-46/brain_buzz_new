@@ -87,7 +87,7 @@ exports.listPublications = async (req, res) => {
         // Calculate finalPrice
         const finalPrice = calculateFinalPrice(publicationObj.originalPrice, publicationObj.discountPrice);
         
-        // Return only the requested fields
+        // Return only the requested fields (security: NEVER expose bookFileUrl directly)
         const filteredPublication = {
           _id: publicationObj._id,
           name: publicationObj.name,
@@ -97,7 +97,12 @@ exports.listPublications = async (req, res) => {
           finalPrice: finalPrice,
           languages: publicationObj.languages,
           validities: publicationObj.validities,
-          hasPurchased: hasPurchased
+          hasPurchased: hasPurchased,
+          // ✅ NEW: Access control fields instead of direct URL
+          availableIn: publicationObj.availableIn,
+          isPreviewEnabled: publicationObj.isPreviewEnabled,
+          previewPages: publicationObj.previewPages,
+          canDownload: hasPurchased && publicationObj.availableIn !== 'HARDCOPY'
         };
         
         return filteredPublication;
@@ -139,7 +144,7 @@ exports.getPublicationById = async (req, res) => {
     // Calculate finalPrice
     const finalPrice = calculateFinalPrice(publicationObj.originalPrice, publicationObj.discountPrice);
     
-    // Return only the requested fields
+    // Return only the requested fields (security: NEVER expose bookFileUrl directly)
     const filteredPublication = {
       _id: publicationObj._id,
       name: publicationObj.name,
@@ -159,7 +164,10 @@ exports.getPublicationById = async (req, res) => {
       detailedDescription: publicationObj.detailedDescription,
       authors: publicationObj.authors,
       galleryImages: publicationObj.galleryImages,
-      bookFileUrl: publicationObj.bookFileUrl,
+      // ✅ NEW: Access control fields instead of direct URL
+      isPreviewEnabled: publicationObj.isPreviewEnabled,
+      previewPages: publicationObj.previewPages,
+      canDownload: hasPurchased && publicationObj.availableIn !== 'HARDCOPY',
       isActive: publicationObj.isActive,
       createdAt: publicationObj.createdAt,
       updatedAt: publicationObj.updatedAt
@@ -172,5 +180,46 @@ exports.getPublicationById = async (req, res) => {
       message: errorResponse.message,
       error: errorResponse.error
     });
+  }
+};
+
+// ✅ NEW: Secure book file access - NEVER expose Cloudinary URLs directly
+exports.getBookFile = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user?._id;
+
+    const publication = await Publication.findById(id);
+    if (!publication) {
+      return res.status(404).json({ message: 'Publication not found' });
+    }
+
+    // ❌ Hardcopy has no digital file
+    if (publication.availableIn === 'HARDCOPY') {
+      return res.status(403).json({
+        message: 'This publication is available as hardcopy only'
+      });
+    }
+
+    // ✅ Admin always allowed
+    if (req.user?.role === 'ADMIN') {
+      return res.redirect(publication.bookFileUrl);
+    }
+
+    // ✅ User must have purchased
+    const hasPurchased = await checkPublicationPurchase(userId, id);
+
+    if (!hasPurchased) {
+      return res.status(403).json({
+        message: 'Please purchase to access this publication'
+      });
+    }
+
+    // ✅ Purchased users can access
+    return res.redirect(publication.bookFileUrl);
+
+  } catch (error) {
+    console.error('Error accessing book file:', error);
+    return res.status(500).json({ message: 'Error accessing book file' });
   }
 };

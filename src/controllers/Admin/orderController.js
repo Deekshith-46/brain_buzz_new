@@ -2,6 +2,7 @@
 const Order = require('../../models/Order/Order');
 const User = require('../../models/User/User');
 const TestSeries = require('../../models/TestSeries/TestSeries');
+const Publication = require('../../models/Publication/Publication');
 
 // Get all orders with user and item details
 exports.getAllOrders = async (req, res) => {
@@ -38,6 +39,8 @@ exports.getAllOrders = async (req, res) => {
           model = TestSeries;
         } else if (item.itemType === 'Course' || item.itemType === 'course') {
           model = require('../../models/Course/Course');
+        } else if (item.itemType === 'Publication' || item.itemType === 'publication') {
+          model = Publication;
         }
         
         if (model && item.itemId) {
@@ -121,11 +124,13 @@ exports.getOrderById = async (req, res) => {
         model = TestSeries;
       } else if (item.itemType === 'Course' || item.itemType === 'course') {
         model = require('../../models/Course/Course');
+      } else if (item.itemType === 'publication' || item.itemType === 'Publication') {
+        model = Publication;
       }
       
       if (model && item.itemId) {
         try {
-          const populated = await model.findById(item.itemId).select('name description price finalPrice').lean();
+          const populated = await model.findById(item.itemId).select('name description price finalPrice availableIn').lean();
           item.itemDetails = populated;
         } catch (err) {
           console.error(`Error populating item ${item.itemId}:`, err.message);
@@ -134,10 +139,18 @@ exports.getOrderById = async (req, res) => {
       }
     }
 
+    // 🔥 Fetch delivery records linked to this order
+    const Delivery = require('../../models/Purchase/Delivery');
+    const deliveries = await Delivery.find({ order: orderId })
+      .populate('publication', 'name availableIn')
+      .populate('user', 'firstName lastName email')
+      .lean();
+
     res.status(200).json({
       success: true,
       data: {
         ...order,
+        deliveries, // ✅ HARD COPY DELIVERY DETAILS
         // Add originalAmount and discountAmount with safe fallback logic
         originalAmount: typeof order.originalAmount === 'number' 
           ? order.originalAmount 
@@ -154,6 +167,7 @@ exports.getOrderById = async (req, res) => {
           ...item,
           itemType: item.itemType.toLowerCase().includes('test') ? 'test_series' : 
                    item.itemType.toLowerCase().includes('course') ? 'online_course' : 
+                   item.itemType.toLowerCase().includes('publication') ? 'publication' : 
                    item.itemType,
         })),
         // Add invoiceId and refundable fields

@@ -1,8 +1,9 @@
 // Central place for shared enums
 
 const PUBLICATION_AVAILABILITY = {
+  HARDCOPY: 'HARDCOPY',
   PUBLICATION: 'PUBLICATION',
-  E_BOOK: 'E_BOOK',
+  EBOOK: 'EBOOK',
   BOTH: 'BOTH',
 };
 

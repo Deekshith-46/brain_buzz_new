@@ -4,9 +4,11 @@ const TestSeries = require('../../models/TestSeries/TestSeries');
 const Course = require('../../models/Course/Course');
 const User = require('../../models/User/User');
 const Coupon = require('../../models/Coupon/Coupon');
+const Publication = require('../../models/Publication/Publication');
 const { createOrder } = require('../../utils/orderUtils');
 const Order = require('../../models/Order/Order');
 const Purchase = require('../../models/Purchase/Purchase');
+const Delivery = require('../../models/Purchase/Delivery');
 const { PurchaseService } = require('../../../services');
 const { getOriginalPrice, getFinalPrice, calculateBaseTotal, calculateOriginalTotal, calculateProductDiscountTotal } = require('../../utils/pricingUtils');
 const { resolveCoupon: resolveCouponUtil, calculateCouponDiscount } = require('../../utils/couponUtils');
@@ -178,6 +180,31 @@ exports.createOrder = async (req, res) => {
       return res.status(400).json({ success: false, message: 'items must be a non-empty array' });
     }
 
+    // ✅ NEW: Hardcopy validation - check if delivery address is required
+    for (const item of items) {
+      if (item.itemType === 'publication') {
+        const publication = await Publication.findById(item.itemId);
+        if (publication && (publication.availableIn === 'HARDCOPY' || publication.availableIn === 'BOTH')) {
+          // Hardcopy publication requires delivery address
+          if (!req.body.deliveryAddress) {
+            return res.status(400).json({
+              success: false,
+              message: 'Delivery address required for hardcopy publications'
+            });
+          }
+          
+          // Validate delivery address fields
+          const { fullName, phone, email, addressLine, city, state, pincode } = req.body.deliveryAddress;
+          if (!fullName || !phone || !email || !addressLine || !city || !state || !pincode) {
+            return res.status(400).json({
+              success: false,
+              message: 'Complete delivery address required for hardcopy publications'
+            });
+          }
+        }
+      }
+    }
+
     // Compute base total (using final prices after product discounts)
     const baseTotal = await calculateBaseTotal(items);
     const originalTotal = await calculateOriginalTotal(items);
@@ -331,7 +358,7 @@ exports.verifyPayment = async (req, res) => {
       });
     }
 
-    await Order.create({
+    const savedOrder = await Order.create({
       user: userId,
       orderId: razorpay_order_id,
       paymentId: razorpay_payment_id,
@@ -452,6 +479,58 @@ exports.verifyPayment = async (req, res) => {
           },
           { upsert: true }
         );
+      } else if (it.itemType === 'publication') {
+        const publication = await Publication.findById(it.itemId);
+        if (publication) {
+          // Grant access to publication
+          await Purchase.updateOne(
+            {
+              user: userId,
+              'items.itemType': 'publication',
+              'items.itemId': it.itemId,
+            },
+            {
+              $set: {
+                amount: finalAmount,
+                discountAmount,
+                finalAmount,
+                status: 'completed',
+                paymentId: razorpay_payment_id,
+                // Publications don't expire by default, but we can set a long expiry if needed
+                expiryDate: new Date(Date.now() + 10 * 365 * 24 * 60 * 60 * 1000), // 10 years
+              },
+              $setOnInsert: {
+                user: userId,
+                items: [{ itemType: 'publication', itemId: it.itemId }],
+                coupon: coupon
+                  ? {
+                    code: coupon.code,
+                    discountType: coupon.discountType,
+                    discountValue: coupon.discountValue,
+                  }
+                  : null,
+                purchaseDate: new Date(),
+              },
+            },
+            { upsert: true }
+          );
+          
+          // ✅ NEW: Create delivery record for hardcopy publications
+          if (publication.availableIn === 'HARDCOPY' || publication.availableIn === 'BOTH') {
+            if (req.body.deliveryAddress) {
+              try {
+                await Delivery.create({
+                  order: savedOrder._id,
+                  user: userId,
+                  publication: it.itemId,
+                  ...req.body.deliveryAddress
+                });
+              } catch (deliveryError) {
+                console.error('Error creating delivery record:', deliveryError);
+              }
+            }
+          }
+        }
       }
     }
 
@@ -505,6 +584,8 @@ exports.getOrderHistory = async (req, res) => {
           model = TestSeries;
         } else if (item.itemType === 'Course' || item.itemType === 'course') {
           model = Course;
+        } else if (item.itemType === 'Publication' || item.itemType === 'publication') {
+          model = Publication;
         }
         
         if (model && item.itemId) {
@@ -518,6 +599,9 @@ exports.getOrderHistory = async (req, res) => {
         }
       }
     }
+
+    // ✅ NEW: Fetch delivery information for user's orders
+    const deliveries = await Delivery.find({ user: userId }).lean();
 
     const total = await Order.countDocuments({ user: userId });
 
@@ -543,12 +627,15 @@ exports.getOrderHistory = async (req, res) => {
             ...item,
             itemType: item.itemType.toLowerCase().includes('test') ? 'test_series' : 
                      item.itemType.toLowerCase().includes('course') ? 'online_course' : 
+                     item.itemType.toLowerCase().includes('publication') ? 'publication' : 
                      item.itemType,
             price: Number(item.price)
           })),
           // Add invoiceId and refundable fields
           invoiceId: `INV-${order._id.toString().substring(0, 8).toUpperCase()}-${new Date(order.createdAt).getFullYear()}`,
-          refundable: order.status === 'completed' && new Date() - new Date(order.createdAt) < 30 * 24 * 60 * 60 * 1000 // 30 days refund window
+          refundable: order.status === 'completed' && new Date() - new Date(order.createdAt) < 30 * 24 * 60 * 60 * 1000, // 30 days refund window
+          // ✅ NEW: Add delivery information
+          deliveries: deliveries.filter(d => d.order.toString() === order._id.toString())
         })),
         total,
         page: Number(page),

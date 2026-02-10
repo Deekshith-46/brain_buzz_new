@@ -18,8 +18,8 @@ const getOriginalPrice = async (item) => {
   }
 
   if (item.itemType === 'publication') {
-    const p = await Publication.findById(item.itemId).select('price');
-    return p?.price ?? 0;
+    const p = await Publication.findById(item.itemId).select('originalPrice');
+    return p?.originalPrice ?? 0;
   }
 
   throw new Error(`Unsupported itemType: ${item.itemType}`);
@@ -48,8 +48,14 @@ const getFinalPrice = async (item) => {
   }
 
   if (item.itemType === 'publication') {
-    const p = await Publication.findById(item.itemId).select('price');
-    return p?.price ?? 0;
+    const p = await Publication.findById(item.itemId).select('originalPrice discountPrice finalPrice');
+    // For publications, finalPrice should be originalPrice minus discountPrice
+    if (p?.finalPrice) {
+      return p.finalPrice;
+    } else if (p?.discountPrice !== undefined && p?.originalPrice) {
+      return p.originalPrice - p.discountPrice;
+    }
+    return p?.originalPrice ?? 0;
   }
 
   throw new Error(`Unsupported itemType: ${item.itemType}`);

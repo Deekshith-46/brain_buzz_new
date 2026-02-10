@@ -498,6 +498,114 @@ curl -X PUT http://localhost:5000/api/admin/publications/PUBLICATION_OBJECT_ID/c
   "data": {
     "_id": "publication_object_id",
     "contentType": "PUBLICATION",
+    "name": "Complete History of Ancient Civilizations",
+    "categories": [
+      {
+        "_id": "new_category_id",
+        "name": "New Category",
+        "slug": "new-category"
+      }
+    ],
+    "subCategories": [
+      {
+        "_id": "new_subcategory_id",
+        "name": "New Subcategory",
+        "slug": "new-subcategory"
+      }
+    ],
+    // ... other fields
+  }
+}
+```
+
+### ✅ NEW: Update Preview Settings
+
+**Endpoint**: `PATCH /api/admin/publications/:id/preview`
+**Method**: PATCH
+**Content-Type**: `application/json`
+**Authentication**: Required (Admin token)
+
+#### Updatable Fields
+- `isPreviewEnabled` - Boolean (enable/disable preview)
+- `previewPages` - Number (how many pages to preview)
+
+#### Sample Request:
+```bash
+curl -X PATCH http://localhost:5000/api/admin/publications/PUBLICATION_OBJECT_ID/preview \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"isPreviewEnabled":true,"previewPages":3}'
+```
+
+#### Success Response:
+```json
+{
+  "success": true,
+  "message": "Preview settings updated successfully",
+  "data": {
+    "_id": "publication_object_id",
+    "name": "Complete History of Ancient Civilizations",
+    "isPreviewEnabled": true,
+    "previewPages": 3,
+    "isDigitalLocked": true,
+    // ... other fields
+  }
+}
+```
+
+### ✅ NEW: Toggle Digital Lock
+
+**Endpoint**: `PATCH /api/admin/publications/:id/digital-lock`
+**Method**: PATCH
+**Content-Type**: `application/json`
+**Authentication**: Required (Admin token)
+
+#### Updatable Fields
+- `isDigitalLocked` - Boolean (lock/unlock digital access)
+
+#### Sample Request:
+```bash
+curl -X PATCH http://localhost:5000/api/admin/publications/PUBLICATION_OBJECT_ID/digital-lock \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"isDigitalLocked":false}'
+```
+
+#### Success Response:
+```json
+{
+  "success": true,
+  "message": "Digital content unlocked successfully",
+  "data": {
+    "_id": "publication_object_id",
+    "name": "Complete History of Ancient Civilizations",
+    "isDigitalLocked": false,
+    "isPreviewEnabled": true,
+    "previewPages": 3,
+    // ... other fields
+  }
+}
+```
+
+#### Updatable Fields
+- `categories` - Array of category IDs
+- `subCategories` - Array of subcategory IDs
+
+#### Sample Request:
+```bash
+curl -X PUT http://localhost:5000/api/admin/publications/PUBLICATION_OBJECT_ID/categories \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"categories":["new_category_id"],"subCategories":["new_subcategory_id"]}'
+```
+
+#### Success Response:
+```json
+{
+  "message": "Categories updated successfully",
+  "data": {
+    "_id": "publication_object_id",
+    "contentType": "PUBLICATION",
     "accessType": "PAID",
     "name": "Complete History of Ancient Civilizations",
     "startDate": "2024-01-15T00:00:00.000Z",

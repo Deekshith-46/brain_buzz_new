@@ -7,20 +7,33 @@ const Language = require('../../models/Course/Language');
 const escapeRegex = (s) => s.replace(/[.*+?^${}()|\[\]\\]/g, '\\$&');
 const cloudinary = require('../../config/cloudinary');
 
-const uploadToCloudinary = (fileBuffer, folder, resourceType = 'image') => {
-  return new Promise((resolve, reject) => {
-    const stream = cloudinary.uploader.upload_stream(
-      { folder, resource_type: resourceType },
-      (error, result) => {
-        if (error) {
-          return reject(error);
-        }
-        resolve(result);
-      }
-    );
+const fs = require('fs').promises;
+const path = require('path');
 
-    stream.end(fileBuffer);
-  });
+const uploadToCloudinary = async (file, folder) => {
+  try {
+    // For PDFs and other binary files, use upload instead of stream
+    const result = await cloudinary.uploader.upload(file.path, {
+      folder,
+      resource_type: 'raw',          // ✅ PDFs MUST be raw for binary safety
+      use_filename: true,
+      unique_filename: true,
+      access_mode: 'public'
+    });
+    
+    // Clean up temp file after upload
+    await fs.unlink(file.path);
+    
+    return result;
+  } catch (error) {
+    // Clean up temp file in case of error
+    try {
+      await fs.unlink(file.path);
+    } catch (unlinkError) {
+      console.error('Error deleting temp file:', unlinkError);
+    }
+    throw error;
+  }
 };
 
 // Create a new publication
@@ -115,12 +128,14 @@ exports.createPublication = async (req, res) => {
     let bookFileUrl;
     if (req.files && req.files.bookFile && req.files.bookFile[0]) {
       const bookFile = req.files.bookFile[0];
-      const uploadResult = await uploadToCloudinary(
-        bookFile.buffer,
-        'brainbuzz/publications/books',
-        'raw'
-      );
-      bookFileUrl = uploadResult.secure_url;
+      // Only upload book file if availableIn is not HARDCOPY
+      if (availableIn !== 'HARDCOPY') {
+        const uploadResult = await uploadToCloudinary(
+          bookFile,
+          'brainbuzz/publications/books'
+        );
+        bookFileUrl = uploadResult.secure_url;
+      }
     }
 
     const publication = await Publication.create({
@@ -497,25 +512,35 @@ exports.updateBook = async (req, res) => {
       return res.status(400).json({ message: 'Book file is required' });
     }
 
+    // Check publication type to ensure book file is allowed
+    const publication = await Publication.findById(id);
+    if (!publication) {
+      return res.status(404).json({ message: 'Publication not found' });
+    }
+
+    // Only allow book file update if availableIn is not HARDCOPY
+    if (publication.availableIn === 'HARDCOPY') {
+      return res.status(400).json({ message: 'Cannot upload book file for HARDCOPY publications' });
+    }
+
     const uploadResult = await uploadToCloudinary(
-      req.file.buffer,
-      'brainbuzz/publications/books',
-      'raw'
+      req.file,
+      'brainbuzz/publications/books'
     );
 
-    const publication = await Publication.findByIdAndUpdate(
+    const updatedPublication = await Publication.findByIdAndUpdate(
       id,
       { bookFileUrl: uploadResult.secure_url },
       { new: true }
     ).populate('categories subCategories languages validities');
 
-    if (!publication) {
+    if (!updatedPublication) {
       return res.status(404).json({ message: 'Publication not found' });
     }
 
     return res.json({
       message: 'Book updated successfully',
-      data: publication
+      data: updatedPublication
     });
   } catch (error) {
     console.error('Error updating book:', error);
@@ -604,6 +629,66 @@ exports.deletePublication = async (req, res) => {
     return res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
+
+// ✅ NEW: Update preview settings
+exports.updatePreviewSettings = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { isPreviewEnabled, previewPages } = req.body;
+    
+    // Validate input
+    if (isPreviewEnabled !== undefined && typeof isPreviewEnabled !== 'boolean') {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'isPreviewEnabled must be a boolean' 
+      });
+    }
+    
+    if (previewPages !== undefined) {
+      const pages = parseInt(previewPages);
+      if (isNaN(pages) || pages < 0) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'previewPages must be a non-negative number' 
+        });
+      }
+    }
+    
+    const updates = {};
+    if (isPreviewEnabled !== undefined) updates.isPreviewEnabled = isPreviewEnabled;
+    if (previewPages !== undefined) updates.previewPages = parseInt(previewPages);
+    
+    const publication = await Publication.findByIdAndUpdate(
+      id,
+      { $set: updates },
+      { new: true, runValidators: true }
+    ).populate('categories subCategories languages validities');
+    
+    if (!publication) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Publication not found' 
+      });
+    }
+    
+    return res.json({
+      success: true,
+      message: 'Preview settings updated successfully',
+      data: publication
+    });
+    
+  } catch (error) {
+    console.error('Error updating preview settings:', error);
+    return res.status(500).json({ 
+      success: false, 
+      message: 'Server error', 
+      error: error.message 
+    });
+  }
+};
+
+// ✅ NEW: Toggle digital lock
+
 
 // Get distinct categories for publications (admin - shows all publications regardless of active status)
 exports.getPublicationCategories = async (req, res) => {
