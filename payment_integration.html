@@ -204,6 +204,47 @@
             </small>
         </div>
 
+        <!-- Delivery Address Section (Hidden by default, shown for HardCopy) -->
+        <div class="form-group hidden" id="deliveryAddressSection">
+            <h3 style="color: #e74c3c; margin-top: 20px;">Delivery Address Required</h3>
+            <p style="color: #666; margin-bottom: 15px;">This publication requires delivery. Please provide your address:</p>
+            
+            <div class="form-group">
+                <label for="fullName">Full Name:</label>
+                <input type="text" id="fullName" placeholder="Enter your full name">
+            </div>
+            
+            <div class="form-group">
+                <label for="phone">Phone Number:</label>
+                <input type="text" id="phone" placeholder="Enter your phone number">
+            </div>
+            
+            <div class="form-group">
+                <label for="email">Email:</label>
+                <input type="email" id="email" placeholder="Enter your email">
+            </div>
+            
+            <div class="form-group">
+                <label for="addressLine">Address Line:</label>
+                <input type="text" id="addressLine" placeholder="Enter street address">
+            </div>
+            
+            <div class="form-group">
+                <label for="city">City:</label>
+                <input type="text" id="city" placeholder="Enter city">
+            </div>
+            
+            <div class="form-group">
+                <label for="state">State:</label>
+                <input type="text" id="state" placeholder="Enter state">
+            </div>
+            
+            <div class="form-group">
+                <label for="pincode">Pincode:</label>
+                <input type="text" id="pincode" placeholder="Enter pincode">
+            </div>
+        </div>
+
         <button onclick="createOrder()" id="createOrderBtn" disabled>Create Order</button>
         <button onclick="showProductInfo()" class="btn-warning">Show Product Info</button>
         
@@ -245,6 +286,7 @@
         
         let currentOrder = null;
         let currentProduct = null;
+        let currentPublicationAvailability = null; // Track publication availability type
 
         // Initialize the page
         document.addEventListener('DOMContentLoaded', function() {
@@ -336,8 +378,18 @@
             } else {
                 couponInfo.innerHTML = `
                     Publications: Fixed price items<br>
-                    <span style="color: #7f8c8d;">No coupon discounts available for Publications</span>
+                    <span style="color: #27ae60;">✓ LATEST10 coupon applicable for Publications</span>
                 `;
+            }
+            
+            // Show/hide delivery address section based on publication availability
+            const deliverySection = document.getElementById('deliveryAddressSection');
+            if (productType === 'publication') {
+                // We'll show/hide based on the actual publication's availableIn field
+                // This will be handled after fetching product info
+                deliverySection.classList.add('hidden'); // Hide by default, show after product info
+            } else {
+                deliverySection.classList.add('hidden');
             }
         }
 
@@ -378,7 +430,8 @@
 
             try {
                 // Normalize itemType to use consistent snake_case format for backend
-                const normalizedItemType = productType === 'online_course' ? 'online_course' : 'test_series';
+                const normalizedItemType = productType === 'online_course' ? 'online_course' : 
+                                          productType === 'publication' ? 'publication' : 'test_series';
 
                 const items = [{
                     itemType: normalizedItemType,
@@ -389,6 +442,46 @@
                 const payload = {
                     items: items
                 };
+
+                // Coupon validation for publications
+                if (productType === 'publication' && couponCode && couponCode !== 'LATEST10') {
+                    showResult('Only LATEST10 coupon is applicable for publications', 'error', 'orderResult');
+                    return;
+                }
+
+                // Auto-apply LATEST10 for publications (can be overridden by user)
+                if (productType === 'publication' && !couponCode) {
+                    payload.couponCode = 'LATEST10';
+                }
+
+                // Add delivery address for HARDCOPY publications only
+                if (productType === 'publication' && currentPublicationAvailability === 'HARDCOPY') {
+                    // Get all delivery address fields
+                    const fullName = document.getElementById('fullName').value.trim();
+                    const phone = document.getElementById('phone').value.trim();
+                    const email = document.getElementById('email').value.trim();
+                    const addressLine = document.getElementById('addressLine').value.trim();
+                    const city = document.getElementById('city').value.trim();
+                    const state = document.getElementById('state').value.trim();
+                    const pincode = document.getElementById('pincode').value.trim();
+
+                    // Validate delivery address fields
+                    if (!fullName || !phone || !email || !addressLine || !city || !state || !pincode) {
+                        showResult('Complete delivery address required for HARDCOPY publications', 'error', 'orderResult');
+                        return;
+                    }
+
+                    // Add delivery address to payload
+                    payload.deliveryAddress = {
+                        fullName,
+                        phone,
+                        email,
+                        addressLine,
+                        city,
+                        state,
+                        pincode
+                    };
+                }
 
                 if (couponCode) {
                     payload.couponCode = couponCode;
@@ -614,11 +707,22 @@
                         `;
                     } else {
                         infoHtml += `
-                            <p><strong>Price:</strong> ₹${product.price || 'N/A'}</p>
-                            <p><strong>Description:</strong> ${product.description || 'N/A'}</p>
-                            <p><strong>Author:</strong> ${product.author || 'N/A'}</p>
-                            <p><strong>Publisher:</strong> ${product.publisher || 'N/A'}</p>
+                            <p><strong>Price:</strong> ₹${product.price || product.originalPrice || 'N/A'}</p>
+                            <p><strong>Discount Price:</strong> ₹${product.discountPrice || 'N/A'}</p>
+                            <p><strong>Final Price:</strong> ₹${product.finalPrice || product.price || 'N/A'}</p>
+                            <p><strong>Available In:</strong> ${product.availableIn || 'N/A'}</p>
+                            <p><strong>Description:</strong> ${product.shortDescription || product.description || 'N/A'}</p>
+                            <p><strong>Author:</strong> ${product.authors ? product.authors.map(a => a.name).join(', ') : 'N/A'}</p>
                         `;
+                        
+                        // Store publication availability and show delivery address only for HARDCOPY
+                        currentPublicationAvailability = product.availableIn;
+                        const deliverySection = document.getElementById('deliveryAddressSection');
+                        if (product.availableIn === 'HARDCOPY') {
+                            deliverySection.classList.remove('hidden');
+                        } else {
+                            deliverySection.classList.add('hidden');
+                        }
                     }
 
                     document.getElementById('productInfo').innerHTML = infoHtml;
