@@ -1,22 +1,34 @@
 const Banner = require('../../models/Banner');
+const { SITE_TYPES } = require('../../constants/bannerConstants');
 
 // Get home banner (public)
 exports.getHomeBanner = async (req, res) => {
   try {
-    const banner = await Banner.findOne({ pageType: 'HOME', isActive: true });
+    const { siteType = 'FREE' } = req.query;
+    
+    // Validate siteType
+    if (!SITE_TYPES.includes(siteType)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Invalid site type. Must be FREE or PAID' 
+      });
+    }
+
+    const banner = await Banner.findOne({ pageType: 'HOME', siteType, isActive: true });
     
     if (!banner) {
       return res.status(404).json({ 
         success: false, 
-        message: 'Home banner not found' 
+        message: `Home ${siteType} banner not found` 
       });
     }
 
-    // Return only image URLs for home banner
-    const imageUrls = banner.images.map(image => image.url);
+    // Return structured response for home banner
     res.json({
       success: true,
-      images: imageUrls
+      siteType,
+      pageType: 'HOME',
+      images: banner.images.map(image => image.url)
     });
   } catch (error) {
     console.error('Error fetching home banner:', error);
@@ -31,22 +43,31 @@ exports.getHomeBanner = async (req, res) => {
 // Get about banner (public)
 exports.getAboutBanner = async (req, res) => {
   try {
-    const banner = await Banner.findOne({ pageType: 'ABOUT', isActive: true });
+    const { siteType = 'FREE' } = req.query;
+    
+    // Validate siteType
+    if (!SITE_TYPES.includes(siteType)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Invalid site type. Must be FREE or PAID' 
+      });
+    }
+
+    const banner = await Banner.findOne({ pageType: 'ABOUT', siteType, isActive: true });
     
     if (!banner) {
       return res.status(404).json({ 
         success: false, 
-        message: 'About banner not found' 
+        message: `About ${siteType} banner not found` 
       });
     }
 
-    // Return heading, description, and image URLs for about banner
-    const imageUrls = banner.images.map(image => image.url);
+    // Return structured response for about banner
     res.json({
       success: true,
-      heading: banner.heading,
-      description: banner.description,
-      images: imageUrls
+      siteType,
+      pageType: 'ABOUT',
+      about: banner.about
     });
   } catch (error) {
     console.error('Error fetching about banner:', error);

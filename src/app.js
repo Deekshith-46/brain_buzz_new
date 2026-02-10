@@ -13,6 +13,9 @@ require('./models/Course/PreviousQuestionPaper');
 // Load Banner model
 require('./models/Banner');
 
+// Load Contact model
+require('./models/Contact');
+
 const adminRoutes = require('./routes/Admin/adminRoutes');
 const adminAuthRoutes = require('./routes/Admin/authRoutes');
 const adminCategoryRoutes = require('./routes/Admin/categoryRoutes');
@@ -146,5 +149,11 @@ const adminBannerRoutes = require('./routes/Admin/bannerRoutes');
 const userBannerRoutes = require('./routes/User/bannerRoutes');
 app.use('/api/admin/banners', adminBannerRoutes);
 app.use('/api/public', userBannerRoutes);
+
+// Contact Routes
+const adminContactRoutes = require('./routes/Admin/contactRoutes');
+const userContactRoutes = require('./routes/User/contactRoutes');
+app.use('/api/admin/contact', adminContactRoutes);
+app.use('/api/public/contact', userContactRoutes);
 
 module.exports = app;
