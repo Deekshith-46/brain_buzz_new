@@ -50,3 +50,43 @@ exports.updateDeliveryStatus = async (req, res) => {
     return res.status(500).json({ message: 'Error updating delivery' });
   }
 };
+
+// Delete delivery by ID (for testing purposes)
+exports.deleteDelivery = async (req, res) => {
+  try {
+    const { deliveryId } = req.params;
+    
+    // Find and delete the delivery
+    const delivery = await Delivery.findByIdAndDelete(deliveryId);
+    
+    if (!delivery) {
+      return res.status(404).json({
+        success: false,
+        message: 'Delivery not found'
+      });
+    }
+    
+    return res.json({
+      success: true,
+      message: 'Delivery deleted successfully',
+      data: {
+        deletedId: deliveryId,
+        delivery: {
+          _id: delivery._id,
+          user: delivery.user,
+          publication: delivery.publication,
+          order: delivery.order,
+          fullName: delivery.fullName,
+          status: delivery.status
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Error deleting delivery:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error deleting delivery',
+      error: error.message
+    });
+  }
+};

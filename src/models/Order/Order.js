@@ -60,7 +60,16 @@ const orderSchema = new Schema({
   discountAmount: Number,
   pricing: Object,
   shippingAddress: Object,
-  billingAddress: Object
+  billingAddress: Object,
+  deliveryAddress: {
+    fullName: String,
+    phone: String,
+    email: String,
+    addressLine: String,
+    city: String,
+    state: String,
+    pincode: String
+  }
 }, { timestamps: true });
 
 // Add pagination plugin

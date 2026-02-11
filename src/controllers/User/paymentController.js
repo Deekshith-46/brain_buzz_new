@@ -261,6 +261,7 @@ exports.createOrder = async (req, res) => {
         userId: userId.toString(),
         couponCode: couponCode || '',
         amountInRupees: finalAmount,
+        deliveryAddress: req.body.deliveryAddress ? JSON.stringify(req.body.deliveryAddress) : undefined
       },
     };
 
@@ -316,8 +317,9 @@ exports.verifyPayment = async (req, res) => {
 
     // Get order details from Razorpay
     const order = await razorpay.orders.fetch(razorpay_order_id);
-    const { items: itemsStr, userId, couponCode } = order.notes;
+    const { items: itemsStr, userId, couponCode, deliveryAddress: deliveryAddressStr } = order.notes;
     const items = JSON.parse(itemsStr || '[]');
+    const deliveryAddress = deliveryAddressStr ? JSON.parse(deliveryAddressStr) : null;
 
     // Recompute pricing using correct final prices
     const baseTotal = await calculateBaseTotal(items);
@@ -368,6 +370,7 @@ exports.verifyPayment = async (req, res) => {
       currency: 'INR',
       status: 'completed',
       items: orderItems,
+      deliveryAddress: deliveryAddress, // ✅ Store delivery address in Order
       coupon: coupon
         ? {
             code: coupon.code,
@@ -515,22 +518,37 @@ exports.verifyPayment = async (req, res) => {
             { upsert: true }
           );
           
-          // ✅ NEW: Create delivery record for hardcopy publications
-          if (publication.availableIn === 'HARDCOPY' || publication.availableIn === 'BOTH') {
-            if (req.body.deliveryAddress) {
-              try {
-                await Delivery.create({
-                  order: savedOrder._id,
-                  user: userId,
-                  publication: it.itemId,
-                  ...req.body.deliveryAddress
-                });
-              } catch (deliveryError) {
-                console.error('Error creating delivery record:', deliveryError);
-              }
-            }
-          }
+
         }
+      }
+    }
+
+    // ✅ CREATE DELIVERY RECORDS FOR HARDCOPY PUBLICATIONS (AFTER ORDER IS SAVED)
+    // Check if any items are HARDCOPY publications and create delivery records
+    const hardcopyPublications = [];
+    for (const item of items) {
+      if (item.itemType === 'publication') {
+        const publication = await Publication.findById(item.itemId);
+        if (publication && (publication.availableIn === 'HARDCOPY' || publication.availableIn === 'BOTH')) {
+          hardcopyPublications.push(item);
+        }
+      }
+    }
+
+    if (hardcopyPublications.length > 0 && savedOrder.deliveryAddress) {
+      try {
+        // Create delivery record for each hardcopy publication
+        for (const item of hardcopyPublications) {
+          await Delivery.create({
+            order: savedOrder._id,
+            user: userId,
+            publication: item.itemId,
+            ...savedOrder.deliveryAddress
+          });
+        }
+      } catch (deliveryError) {
+        console.error('Error creating delivery records:', deliveryError);
+        // Don't fail the payment if delivery creation fails
       }
     }
 
