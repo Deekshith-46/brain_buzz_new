@@ -76,7 +76,10 @@ const checkCourseAccess = async (req, res, next) => {
       'items.itemType': 'online_course',
       'items.itemId': courseId,
       status: 'completed',
-      expiryDate: { $gt: new Date() } // Check if purchase is still valid
+      $or: [
+        { expiryDate: { $exists: false } },
+        { expiryDate: { $gt: new Date() } }
+      ]
     });
 
     if (!purchase) {
@@ -132,7 +135,10 @@ const checkCoursePurchase = async (userId, courseId) => {
       'items.itemType': 'online_course',
       'items.itemId': courseId,
       status: 'completed',
-      expiryDate: { $gt: new Date() } // Check if purchase is still valid
+      $or: [
+        { expiryDate: { $exists: false } },
+        { expiryDate: { $gt: new Date() } }
+      ]
     });
 
     return {

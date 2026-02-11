@@ -268,7 +268,10 @@ static async getApplicableCoupons(items, userId) {
       'items.itemType': itemType,
       'items.itemId': itemId,
       status: 'completed',
-      expiryDate: { $gt: new Date() }
+      $or: [
+        { expiryDate: { $exists: false } },
+        { expiryDate: { $gt: new Date() } }
+      ]
     });
 
     return !!purchase;

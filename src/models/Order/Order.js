@@ -6,7 +6,7 @@ const Schema = mongoose.Schema;
 const orderItemSchema = new Schema({
   itemType: {
     type: String,
-    enum: ['TestSeries', 'Course', 'testSeries', 'course'], // Support both old and new formats
+    enum: ['TestSeries', 'Course', 'testSeries', 'course', 'publication'], // Support both old and new formats
     required: true
   },
   itemId: {

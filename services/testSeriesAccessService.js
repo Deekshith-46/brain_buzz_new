@@ -17,16 +17,21 @@ class TestSeriesAccessService {
     }
 
     try {
-      // Check newer Purchase model first
+      // Check newer Purchase model first with proper validation
       const purchase = await Purchase.findOne({
         user: userId,
         "items.itemId": testSeriesId,
-        "items.itemType": "test_series"
+        "items.itemType": "test_series",
+        status: "completed",
+        $or: [
+          { expiryDate: { $exists: false } },
+          { expiryDate: { $gt: new Date() } }
+        ]
       });
 
       if (purchase) {
-        // Check if purchase is valid based on validity period
-        const isValid = this.validatePurchase(purchase, testSeriesId);
+        // Check if purchase is valid based on status and expiry
+        const isValid = this.validatePurchase(purchase);
         const expiryDate = this.calculateExpiryDate(purchase, testSeriesId);
 
         return {
@@ -38,6 +43,16 @@ class TestSeriesAccessService {
       }
 
       // Fallback to legacy TestSeriesPurchase model if newer model doesn't have it
+      // Only enable in development/testing environments
+      if (process.env.ENABLE_LEGACY_PURCHASES !== 'true') {
+        return {
+          hasAccess: false,
+          isValid: false,
+          purchase: null,
+          expiryDate: null
+        };
+      }
+      
       const LegacyTestSeriesPurchase = require('../src/models/TestSeries/TestSeriesPurchase');
       const legacyPurchase = await LegacyTestSeriesPurchase.findOne({
         user: userId,
@@ -99,9 +114,18 @@ class TestSeriesAccessService {
         return true;
       }
 
-      // Check if user has purchased the test series
-      const accessInfo = await this.getAccessInfo(userId, seriesId);
-      return accessInfo.hasAccess && accessInfo.isValid;
+      // Check if user has purchased the test series with proper validation
+      const purchase = await Purchase.findOne({
+        user: userId,
+        "items.itemId": seriesId,
+        "items.itemType": "test_series",
+        status: "completed",
+        $or: [
+          { expiryDate: { $exists: false } },
+          { expiryDate: { $gt: new Date() } }
+        ]
+      });
+      return !!purchase;
     } catch (error) {
       console.error('Error checking test access:', error);
       return false;
@@ -127,9 +151,18 @@ class TestSeriesAccessService {
         return true;
       }
 
-      // Check if user has purchased the series
-      const accessInfo = await this.getAccessInfo(userId, seriesId);
-      return accessInfo.hasAccess && accessInfo.isValid;
+      // Check if user has purchased the series with proper validation
+      const purchase = await Purchase.findOne({
+        user: userId,
+        "items.itemId": seriesId,
+        "items.itemType": "test_series",
+        status: "completed",
+        $or: [
+          { expiryDate: { $exists: false } },
+          { expiryDate: { $gt: new Date() } }
+        ]
+      });
+      return !!purchase;
     } catch (error) {
       console.error('Error checking series access:', error);
       return false;
@@ -183,66 +216,32 @@ class TestSeriesAccessService {
   }
 
   /**
-   * Validate a purchase based on validity period
+   * Validate a purchase based on status and expiry date
    */
-  static validatePurchase(purchase, testSeriesId) {
+  static validatePurchase(purchase) {
     if (!purchase) return false;
-
-    // Check if purchase is for the correct test series
-    const item = purchase.items.find(item => 
-      item.itemId.toString() === testSeriesId.toString() && 
-      item.itemType === 'test_series'
-    );
-    
-    if (!item) return false;
-
-    // If there's no validity period, assume it's always valid
-    if (!purchase.validityPeriod) {
-      return true;
-    }
-
-    // Check if purchase is still within validity period
-    const purchaseDate = new Date(purchase.createdAt);
-    const validityDays = purchase.validityPeriod.durationInDays;
-    const expiryDate = new Date(purchaseDate.getTime() + (validityDays * 24 * 60 * 60 * 1000));
-
-    return new Date() <= expiryDate;
+    if (purchase.status !== 'completed') return false;
+    // If no expiryDate, treat as lifetime access
+    if (purchase.expiryDate && purchase.expiryDate <= new Date()) return false;
+    return true;
   }
 
   /**
-   * Calculate expiry date for a purchase
+   * Get expiry date from purchase
    */
   static calculateExpiryDate(purchase, testSeriesId) {
     if (!purchase) return null;
-
-    // Check if purchase is for the correct test series
-    const item = purchase.items.find(item => 
-      item.itemId.toString() === testSeriesId.toString() && 
-      item.itemType === 'test_series'
-    );
-    
-    if (!item) return null;
-
-    if (!purchase.validityPeriod) {
-      return null; // No expiry
-    }
-
-    const purchaseDate = new Date(purchase.createdAt);
-    const validityDays = purchase.validityPeriod.durationInDays;
-    return new Date(purchaseDate.getTime() + (validityDays * 24 * 60 * 60 * 1000));
+    return purchase.expiryDate || null;
   }
 
   /**
-   * Validate legacy purchase
+   * Validate legacy purchase (only used when legacy purchases are enabled)
    */
   static validateLegacyPurchase(legacyPurchase) {
     if (!legacyPurchase) return false;
-
-    // Check if legacy purchase has expired
     if (legacyPurchase.expiryDate && new Date() > new Date(legacyPurchase.expiryDate)) {
       return false;
     }
-
     return true;
   }
 }

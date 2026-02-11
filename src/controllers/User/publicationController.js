@@ -216,6 +216,11 @@ exports.getBookFile = async (req, res) => {
     }
 
     // ✅ Purchased users can access
+    // Set headers to allow PDF to be viewed in browser
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Cache-Control': 'private, max-age=3600', // Cache for 1 hour
+    });
     return res.redirect(publication.bookFileUrl);
 
   } catch (error) {

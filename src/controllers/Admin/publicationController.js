@@ -10,27 +10,56 @@ const cloudinary = require('../../config/cloudinary');
 const fs = require('fs').promises;
 const path = require('path');
 
-const uploadToCloudinary = async (file, folder) => {
+const uploadToCloudinary = async (file, folder, resourceType = 'raw') => {
   try {
-    // For PDFs and other binary files, use upload instead of stream
-    const result = await cloudinary.uploader.upload(file.path, {
-      folder,
-      resource_type: 'raw',          // ✅ PDFs MUST be raw for binary safety
-      use_filename: true,
-      unique_filename: true,
-      access_mode: 'public'
-    });
-    
-    // Clean up temp file after upload
-    await fs.unlink(file.path);
-    
-    return result;
-  } catch (error) {
-    // Clean up temp file in case of error
-    try {
+    // Handle both memory storage (buffer) and disk storage (path)
+    if (file.buffer) {
+      // Memory storage - upload buffer directly using stream
+      return new Promise((resolve, reject) => {
+        const uploadStream = cloudinary.uploader.upload_stream(
+          {
+            folder,
+            resource_type: resourceType,
+            use_filename: true,
+            unique_filename: true,
+            access_mode: 'public'
+          },
+          (error, result) => {
+            if (error) {
+              reject(error);
+            } else {
+              resolve(result);
+            }
+          }
+        );
+        
+        uploadStream.end(file.buffer);
+      });
+    } else if (file.path) {
+      // Disk storage - upload file path
+      const result = await cloudinary.uploader.upload(file.path, {
+        folder,
+        resource_type: resourceType,
+        use_filename: true,
+        unique_filename: true,
+        access_mode: 'public'
+      });
+      
+      // Clean up temp file after upload
       await fs.unlink(file.path);
-    } catch (unlinkError) {
-      console.error('Error deleting temp file:', unlinkError);
+      
+      return result;
+    } else {
+      throw new Error('Invalid file format: missing buffer or path');
+    }
+  } catch (error) {
+    // Only try to clean up temp file if using disk storage
+    if (file.path) {
+      try {
+        await fs.unlink(file.path);
+      } catch (unlinkError) {
+        console.error('Error deleting temp file:', unlinkError);
+      }
     }
     throw error;
   }
@@ -132,7 +161,8 @@ exports.createPublication = async (req, res) => {
       if (availableIn !== 'HARDCOPY') {
         const uploadResult = await uploadToCloudinary(
           bookFile,
-          'brainbuzz/publications/books'
+          'brainbuzz/publications/books',
+          'raw'
         );
         bookFileUrl = uploadResult.secure_url;
       }
@@ -525,7 +555,8 @@ exports.updateBook = async (req, res) => {
 
     const uploadResult = await uploadToCloudinary(
       req.file,
-      'brainbuzz/publications/books'
+      'brainbuzz/publications/books',
+      'raw'
     );
 
     const updatedPublication = await Publication.findByIdAndUpdate(
