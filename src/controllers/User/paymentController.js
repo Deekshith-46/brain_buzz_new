@@ -398,16 +398,18 @@ exports.verifyPayment = async (req, res) => {
       
       if (it.itemType === 'test_series') {
         const testSeries = await TestSeries.findById(it.itemId);
-        if (testSeries && testSeries.validity && testSeries.validity.length > 0) {
-          // Assuming validity is an array and we take the first one
-          const validityOption = testSeries.validity[0];
-          if (validityOption && validityOption.durationInDays) {
-            validityDurationInDays = validityOption.durationInDays;
-          }
+        const { calculateExpiryDate } = require('../../utils/expiryUtils');
+        let expiryDate = null;
+        
+        if (testSeries && testSeries.validity) {
+          expiryDate = calculateExpiryDate(testSeries.validity);
+        } else {
+          // Default to 1 year if no validity found
+          expiryDate = calculateExpiryDate('1_YEAR');
         }
         
         // Debug logging
-        console.log(`Test Series Purchase - Item ID: ${it.itemId}, Validity Days: ${validityDurationInDays}`);
+        console.log(`Test Series Purchase - Item ID: ${it.itemId}, Validity: ${testSeries?.validity || '1_YEAR'}, Expiry: ${expiryDate}`);
         
         await Purchase.updateOne(
           {
@@ -422,7 +424,7 @@ exports.verifyPayment = async (req, res) => {
               finalAmount,
               status: 'completed',
               paymentId: razorpay_payment_id,
-              expiryDate: new Date(Date.now() + validityDurationInDays * 24 * 60 * 60 * 1000), // Use actual validity
+              expiryDate: expiryDate,
             },
             $setOnInsert: {
               user: userId,
@@ -441,16 +443,18 @@ exports.verifyPayment = async (req, res) => {
         );
       } else if (it.itemType === 'online_course') {
         const course = await Course.findById(it.itemId);
-        if (course && course.validities && course.validities.length > 0) {
-          // Assuming validities is an array and we take the first one
-          const validityOption = course.validities[0];
-          if (validityOption && validityOption.durationInDays) {
-            validityDurationInDays = validityOption.durationInDays;
-          }
+        const { calculateExpiryDate } = require('../../utils/expiryUtils');
+        let expiryDate = null;
+        
+        if (course && course.validity) {
+          expiryDate = calculateExpiryDate(course.validity);
+        } else {
+          // Default to 1 year if no validity found
+          expiryDate = calculateExpiryDate('1_YEAR');
         }
         
         // Debug logging
-        console.log(`Course Purchase - Item ID: ${it.itemId}, Validity Days: ${validityDurationInDays}`);
+        console.log(`Course Purchase - Item ID: ${it.itemId}, Validity: ${course?.validity || '1_YEAR'}, Expiry: ${expiryDate}`);
         
         await Purchase.updateOne(
           {
@@ -465,7 +469,7 @@ exports.verifyPayment = async (req, res) => {
               finalAmount,
               status: 'completed',
               paymentId: razorpay_payment_id,
-              expiryDate: new Date(Date.now() + validityDurationInDays * 24 * 60 * 60 * 1000), // Use actual validity
+              expiryDate: expiryDate,
             },
             $setOnInsert: {
               user: userId,
@@ -484,42 +488,52 @@ exports.verifyPayment = async (req, res) => {
         );
       } else if (it.itemType === 'publication') {
         const publication = await Publication.findById(it.itemId);
-        if (publication) {
-          // Grant access to publication
-          await Purchase.updateOne(
-            {
+        const { calculateExpiryDate } = require('../../utils/expiryUtils');
+        let expiryDate = null;
+        
+        if (publication && publication.validity) {
+          expiryDate = calculateExpiryDate(publication.validity);
+        } else {
+          // Default to 1 year if no validity found
+          expiryDate = calculateExpiryDate('1_YEAR');
+        }
+        
+        // Debug logging
+        console.log(`Publication Purchase - Item ID: ${it.itemId}, Validity: ${publication?.validity || '1_YEAR'}, Expiry: ${expiryDate}`);
+        
+        // Grant access to publication
+        await Purchase.updateOne(
+          {
+            user: userId,
+            'items.itemType': 'publication',
+            'items.itemId': it.itemId,
+          },
+          {
+            $set: {
+              amount: finalAmount,
+              discountAmount,
+              finalAmount,
+              status: 'completed',
+              paymentId: razorpay_payment_id,
+              expiryDate: expiryDate,
+            },
+            $setOnInsert: {
               user: userId,
-              'items.itemType': 'publication',
-              'items.itemId': it.itemId,
+              items: [{ itemType: 'publication', itemId: it.itemId }],
+              coupon: coupon
+                ? {
+                  code: coupon.code,
+                  discountType: coupon.discountType,
+                  discountValue: coupon.discountValue,
+                }
+                : null,
+              purchaseDate: new Date(),
             },
-            {
-              $set: {
-                amount: finalAmount,
-                discountAmount,
-                finalAmount,
-                status: 'completed',
-                paymentId: razorpay_payment_id,
-                // Publications don't expire by default, but we can set a long expiry if needed
-                expiryDate: new Date(Date.now() + 10 * 365 * 24 * 60 * 60 * 1000), // 10 years
-              },
-              $setOnInsert: {
-                user: userId,
-                items: [{ itemType: 'publication', itemId: it.itemId }],
-                coupon: coupon
-                  ? {
-                    code: coupon.code,
-                    discountType: coupon.discountType,
-                    discountValue: coupon.discountValue,
-                  }
-                  : null,
-                purchaseDate: new Date(),
-              },
-            },
-            { upsert: true }
-          );
+          },
+          { upsert: true }
+        );
           
 
-        }
       }
     }
 

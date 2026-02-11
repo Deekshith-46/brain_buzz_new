@@ -136,7 +136,7 @@ exports.listCourses = async (req, res) => {
       .populate('categories', 'name slug description thumbnailUrl')
       .populate('subCategories', 'name slug description thumbnailUrl')
       .populate('languages', 'name code')
-      .populate('validities', 'label durationInDays');
+      // validity is now a string enum, no populate needed
 
     // Process courses to return only specified fields
     const processedCourses = await Promise.all(
@@ -159,7 +159,7 @@ exports.listCourses = async (req, res) => {
           discountPrice: courseObj.discountPrice,
           finalPrice: finalPrice,
           languages: courseObj.languages,
-          validities: courseObj.validities,
+          validity: courseObj.validity,
           hasPurchased: hasPurchased,
           isValid: isValid
         };
@@ -192,7 +192,7 @@ exports.getCourseById = async (req, res) => {
       .populate('categories', 'name slug description thumbnailUrl')
       .populate('subCategories', 'name slug description thumbnailUrl')
       .populate('languages', 'name code')
-      .populate('validities', 'label durationInDays');
+      // validity is now a string enum, no populate needed
 
     if (!course) {
       return res.status(404).json({ message: 'Course not found' });
@@ -286,7 +286,7 @@ exports.getCourseClass = async (req, res) => {
       .populate('categories', 'name slug description thumbnailUrl')
       .populate('subCategories', 'name slug description thumbnailUrl')
       .populate('languages', 'name code')
-      .populate('validities', 'label durationInDays');
+      // validity is now a string enum, no populate needed
 
     if (!course) {
       return res.status(404).json({ message: 'Course not found' });

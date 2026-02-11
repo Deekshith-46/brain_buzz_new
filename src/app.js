@@ -21,7 +21,7 @@ const adminAuthRoutes = require('./routes/Admin/authRoutes');
 const adminCategoryRoutes = require('./routes/Admin/categoryRoutes');
 const adminSubCategoryRoutes = require('./routes/Admin/subCategoryRoutes');
 const adminLanguageRoutes = require('./routes/Admin/languageRoutes');
-const adminValidityRoutes = require('./routes/Admin/validityRoutes');
+// Validity routes removed - using enum-based system
 const adminCourseRoutes = require('./routes/Admin/courseRoutes');
 const adminPublicationRoutes = require('./routes/Admin/publicationRoutes');
 const adminEBookRoutes = require('./routes/Admin/eBookRoutes');
@@ -70,7 +70,7 @@ app.use('/api/admin', adminAuthRoutes);
 app.use('/api/admin/categories', adminCategoryRoutes);
 app.use('/api/admin/subcategories', adminSubCategoryRoutes);
 app.use('/api/admin/languages', adminLanguageRoutes);
-app.use('/api/admin/validities', adminValidityRoutes);
+// app.use('/api/admin/validities', adminValidityRoutes); // Removed - using enum-based system
 app.use('/api/admin/courses', adminCourseRoutes);
 app.use('/api/admin/publications', adminPublicationRoutes);
 app.use('/api/admin/ebooks', adminEBookRoutes);

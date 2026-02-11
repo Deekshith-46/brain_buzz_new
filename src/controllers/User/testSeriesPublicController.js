@@ -114,7 +114,7 @@ exports.listPublicTestSeries = async (req, res) => {
       .populate('categories', 'name slug')
       .populate('subCategories', 'name slug')
       .populate('languages', 'name code')
-      .populate('validity', 'label durationInDays');
+      // validity is now a string enum, no populate needed
 
     console.log(`Found ${seriesList.length} test series matching filter`);
     
@@ -178,7 +178,7 @@ exports.getPublicTestSeriesById = async (req, res) => {
       .populate('categories', 'name slug')
       .populate('subCategories', 'name slug')
       .populate('languages', 'name code')
-      .populate('validity', 'label durationInDays');
+      // validity is now a string enum, no populate needed
 
     if (!series) {
       return res.status(404).json({ 
@@ -535,7 +535,7 @@ exports.listTestSeries = async (req, res) => {
       .populate('categories', 'name slug description thumbnailUrl')
       .populate('subCategories', 'name slug description thumbnailUrl')
       .populate('languages', 'name code')
-      .populate('validity', 'label durationInDays');
+      // validity is now a string enum, no populate needed
 
     // Process test series to return only specified fields
     const processedTestSeries = await Promise.all(

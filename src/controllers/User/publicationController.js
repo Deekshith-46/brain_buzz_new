@@ -100,7 +100,7 @@ exports.listPublications = async (req, res) => {
       .populate('categories', 'name slug')
       .populate('subCategories', 'name slug')
       .populate('languages', 'name code')
-      .populate('validities', 'label durationInDays');
+      // validity is now a string enum, no populate needed
     
     // Process publications to return only specified fields and calculate finalPrice
     const userId = req.user?._id;
@@ -121,7 +121,7 @@ exports.listPublications = async (req, res) => {
           discountPrice: publicationObj.discountPrice,
           finalPrice: finalPrice,
           languages: publicationObj.languages,
-          validities: publicationObj.validities,
+          validity: publicationObj.validity,
           hasPurchased: hasPurchased,
           // ✅ NEW: Access control fields instead of direct URL
           availableIn: publicationObj.availableIn,
@@ -160,7 +160,7 @@ exports.getPublicationById = async (req, res) => {
       .populate('categories', 'name slug')
       .populate('subCategories', 'name slug')
       .populate('languages', 'name code')
-      .populate('validities', 'label durationInDays');
+      // validity is now a string enum, no populate needed
 
     if (!publication) {
       return res.status(404).json({ message: 'Publication not found' });
@@ -182,7 +182,7 @@ exports.getPublicationById = async (req, res) => {
       discountPrice: publicationObj.discountPrice,
       finalPrice: finalPrice,
       languages: publicationObj.languages,
-      validities: publicationObj.validities,
+      validity: publicationObj.validity,
       hasPurchased: hasPurchased,
       // Include other necessary fields
       startDate: publicationObj.startDate,

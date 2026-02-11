@@ -128,12 +128,11 @@ const courseSchema = new mongoose.Schema(
         ref: 'Language',
       },
     ],
-    validities: [
-      {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'ValidityOption',
-      },
-    ],
+    validity: {
+      type: String,
+      enum: require('../../constants/validityMap').VALIDITY_LABELS,
+      required: true
+    },
     thumbnailUrl: {
       type: String,
       trim: true,

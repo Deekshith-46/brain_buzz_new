@@ -2,6 +2,7 @@ const Publication = require('../../models/Publication/Publication');
 const Category = require('../../models/Course/Category');
 const SubCategory = require('../../models/Course/SubCategory');
 const Language = require('../../models/Course/Language');
+const { VALIDITY_LABELS } = require('../../constants/validityMap');
 
 // Helper function to escape regex special characters
 const escapeRegex = (s) => s.replace(/[.*+?^${}()|\[\]\\]/g, '\\$&');
@@ -82,7 +83,7 @@ exports.createPublication = async (req, res) => {
       categoryIds = [],
       subCategoryIds = [],
       languageIds = [],
-      validityIds = [],
+      validity,
       originalPrice,
       discountPrice,
       availableIn,
@@ -174,7 +175,7 @@ exports.createPublication = async (req, res) => {
       categories: categoryIds,
       subCategories: subCategoryIds,
       languages: languageIds,
-      validities: validityIds,
+      validity: validity && validity !== 'null' && validity !== 'undefined' ? validity : undefined,
       thumbnailUrl,
       originalPrice,
       discountPrice,
@@ -214,7 +215,7 @@ exports.getPublications = async (req, res) => {
       .populate('categories', 'name slug')
       .populate('subCategories', 'name slug')
       .populate('languages', 'name code')
-      .populate('validities', 'label durationInDays');
+      // validity is now a string enum, no populate needed
 
     return res.status(200).json({ data: publications });
   } catch (error) {
@@ -232,7 +233,7 @@ exports.getPublicationById = async (req, res) => {
       .populate('categories', 'name slug')
       .populate('subCategories', 'name slug')
       .populate('languages', 'name code')
-      .populate('validities', 'label durationInDays');
+      // validity is now a string enum, no populate needed
 
     if (!publication) {
       return res.status(404).json({ message: 'Publication not found' });
@@ -255,7 +256,7 @@ const ALLOWED_FIELDS = [
   'shortDescription',
   'detailedDescription',
   'isActive',
-  'validities',
+  'validity',
   'pricingNote'
 ];
 
@@ -290,10 +291,18 @@ exports.updatePublication = async (req, res) => {
       }
     }
 
+    // Validate validity enum if provided
+    if (updates.validity && !VALIDITY_LABELS.includes(updates.validity)) {
+      return res.status(400).json({ 
+        success: false,
+        message: `Invalid validity. Must be one of: ${VALIDITY_LABELS.join(', ')}` 
+      });
+    }
+
     // Check if we have any updates
     if (Object.keys(updates).length === 0) {
       const publication = await Publication.findById(req.params.id)
-        .populate('categories subCategories languages validities');
+        .populate('categories subCategories languages');
       
       if (!publication) {
         return res.status(404).json({ message: 'Publication not found' });
@@ -331,7 +340,7 @@ exports.updatePublication = async (req, res) => {
       req.params.id,
       { $set: updates },
       { new: true, runValidators: true }
-    ).populate('categories subCategories languages validities');
+    ).populate('categories subCategories languages');
 
     if (!publication) {
       return res.status(404).json({ message: 'Publication not found' });

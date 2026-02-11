@@ -181,7 +181,7 @@ exports.createCourse = async (req, res) => {
       categories: categoryIds,
       subCategories: subCategoryIds,
       languages: languageIds,
-      validities: validityIds,
+      validity: validityId,
       thumbnailUrl,
       originalPrice,
       discountPrice,
@@ -227,16 +227,15 @@ exports.createFullCourse = async (req, res) => {
     let categoryIds = [];
     let subCategoryIds = [];
     let languageIds = [];
-    let validityIds = [];
     let classes = [];
     let tutors = [];
     let studyMaterials = [];
+    let validity = req.body.validity || '1_YEAR'; // Default to 1 year if not provided
 
     try {
       categoryIds = req.body.categoryIds ? JSON.parse(req.body.categoryIds) : [];
       subCategoryIds = req.body.subCategoryIds ? JSON.parse(req.body.subCategoryIds) : [];
       languageIds = req.body.languageIds ? JSON.parse(req.body.languageIds) : [];
-      validityIds = req.body.validityIds ? JSON.parse(req.body.validityIds) : [];
       classes = req.body.classes ? JSON.parse(req.body.classes) : [];
       tutors = req.body.tutors ? JSON.parse(req.body.tutors) : [];
       studyMaterials = req.body.studyMaterials ? JSON.parse(req.body.studyMaterials) : [];
@@ -375,7 +374,7 @@ exports.createFullCourse = async (req, res) => {
       categories: categoryIds,
       subCategories: subCategoryIds,
       languages: languageIds,
-      validities: validityIds,
+      validity: validity,
       thumbnailUrl,
       originalPrice: parseFloat(originalPrice),
       discountPrice: discountPrice ? parseFloat(discountPrice) : 0,
@@ -444,7 +443,7 @@ exports.createCourseShell = async (req, res) => {
       categories: categoryIds,
       subCategories: subCategoryIds,
       languages: [],
-      validities: [],
+      validity: '1_YEAR', // Default validity
       originalPrice: 0, // placeholder, to be updated in step 2
       discountPrice: 0,
       discountPercent: 0,
@@ -525,7 +524,7 @@ exports.updateCourseShell = async (req, res) => {
       .populate('categories', 'name slug')
       .populate('subCategories', 'name slug')
       .populate('languages', 'name code')
-      .populate('validities', 'label durationInDays');
+      // validity is now a string enum, no populate needed
 
     if (!course) {
       return res.status(404).json({ message: 'Course not found' });
@@ -581,7 +580,7 @@ exports.updateCourseBasic = async (req, res) => {
       .populate('categories', 'name slug')
       .populate('subCategories', 'name slug')
       .populate('languages', 'name code')
-      .populate('validities', 'label durationInDays');
+      // validity is now a string enum, no populate needed
 
     if (!course) {
       return res.status(404).json({ message: 'Course not found' });
@@ -939,7 +938,7 @@ exports.getCourses = async (req, res) => {
       .populate('categories', 'name slug')
       .populate('subCategories', 'name slug')
       .populate('languages', 'name code')
-      .populate('validities', 'label durationInDays');
+      // validity is now a string enum, no populate needed
     
     // Process courses to return only specified fields
     const processedCourses = courses.map(course => {
@@ -977,7 +976,7 @@ exports.getCourseById = async (req, res) => {
       .populate('categories', 'name slug')
       .populate('subCategories', 'name slug')
       .populate('languages', 'name code')
-      .populate('validities', 'label durationInDays');
+      // validity is now a string enum, no populate needed
 
     if (!course) {
       return res.status(404).json({ message: 'Course not found' });
@@ -1124,7 +1123,7 @@ exports.updateCourse = async (req, res) => {
       categoryIds,
       subCategoryIds,
       languageIds,
-      validityIds,
+      validity,
       originalPrice,
       discountPrice,
       discountPercent,
@@ -1146,7 +1145,7 @@ exports.updateCourse = async (req, res) => {
     if (categoryIds) updates.categories = categoryIds;
     if (subCategoryIds) updates.subCategories = subCategoryIds;
     if (languageIds) updates.languages = languageIds;
-    if (validityIds) updates.validities = validityIds;
+    if (validity) updates.validity = validity;
     if (typeof originalPrice !== 'undefined') updates.originalPrice = originalPrice;
     if (typeof discountPrice !== 'undefined') updates.discountPrice = discountPrice;
     if (typeof discountPercent !== 'undefined') updates.discountPercent = discountPercent;
@@ -1282,7 +1281,7 @@ exports.updateCourse = async (req, res) => {
       .populate('categories', 'name slug')
       .populate('subCategories', 'name slug')
       .populate('languages', 'name code')
-      .populate('validities', 'label durationInDays');
+      .populate('validity', 'label durationInDays');  // Changed from 'validities' to 'validity'
 
     if (!course) {
       return res.status(404).json({ message: 'Course not found' });
@@ -1656,7 +1655,7 @@ exports.testUpdateCourseActiveStatus = async (req, res) => {
       .populate('categories', 'name slug')
       .populate('subCategories', 'name slug')
       .populate('languages', 'name code')
-      .populate('validities', 'label durationInDays');
+      .populate('validity', 'label durationInDays');  // Changed from 'validities' to 'validity'
     
     return res.status(200).json({
       message: `Course isActive status updated to ${isActive}`,

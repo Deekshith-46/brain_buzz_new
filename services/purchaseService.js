@@ -112,43 +112,35 @@ static async getApplicableCoupons(items, userId) {
       };
     }
 
-    // Set expiry date based on validity from the purchased items
-    // First, we need to determine the validity period for the items being purchased
-    const expiryDate = new Date();
+    // Set expiry date based on validity from the purchased items using enum system
+    const { getMaxExpiryDate } = require('../src/utils/expiryUtils');
+    const validityLabels = [];
     
-    // Default to 1 year if no specific validity is found
-    let maxValidityInDays = 365;
-    
+    // Collect validity labels from all items
     for (const item of items) {
-      let validityInDays = 365; // Default to 1 year
-      
       if (item.itemType === 'online_course') {
         const Course = mongoose.model('Course');
         const course = await Course.findById(item.itemId);
-        if (course && course.validities && course.validities.length > 0) {
-          // Get the first validity option and use its duration
-          const validityOption = await mongoose.model('ValidityOption').findById(course.validities[0]);
-          if (validityOption && validityOption.durationInDays) {
-            validityInDays = validityOption.durationInDays;
-          }
+        if (course && course.validity) {
+          validityLabels.push(course.validity);
         }
       } else if (item.itemType === 'test_series') {
         const TestSeries = mongoose.model('TestSeries');
         const testSeries = await TestSeries.findById(item.itemId);
         if (testSeries && testSeries.validity) {
-          const validityOption = await mongoose.model('ValidityOption').findById(testSeries.validity);
-          if (validityOption && validityOption.durationInDays) {
-            validityInDays = validityOption.durationInDays;
-          }
+          validityLabels.push(testSeries.validity);
+        }
+      } else if (item.itemType === 'publication') {
+        const Publication = mongoose.model('Publication');
+        const publication = await Publication.findById(item.itemId);
+        if (publication && publication.validity) {
+          validityLabels.push(publication.validity);
         }
       }
-      
-      // Use the maximum validity period among all items
-      maxValidityInDays = Math.max(maxValidityInDays, validityInDays);
     }
     
-    // Set expiry date based on validity in days
-    expiryDate.setDate(expiryDate.getDate() + maxValidityInDays);
+    // Calculate expiry date using the utility function
+    const expiryDate = getMaxExpiryDate(validityLabels);
 
     // Create purchase record
     const purchase = new Purchase({
@@ -180,44 +172,35 @@ static async getApplicableCoupons(items, userId) {
     if (isPaymentValid) {
       purchase.status = 'completed';
       
-      // Update expiry date based on validity from the purchased items
-      // This ensures the expiry is calculated based on the actual validity duration
-      const expiryDate = new Date();
+      // Update expiry date based on validity from the purchased items using enum system
+      const { getMaxExpiryDate } = require('../src/utils/expiryUtils');
+      const validityLabels = [];
       
-      // Default to 1 year if no specific validity is found
-      let maxValidityInDays = 365;
-      
+      // Collect validity labels from all items
       for (const item of purchase.items) {
-        let validityInDays = 365; // Default to 1 year
-        
         if (item.itemType === 'online_course') {
           const Course = mongoose.model('Course');
           const course = await Course.findById(item.itemId);
-          if (course && course.validities && course.validities.length > 0) {
-            // Get the first validity option and use its duration
-            const validityOption = await mongoose.model('ValidityOption').findById(course.validities[0]);
-            if (validityOption && validityOption.durationInDays) {
-              validityInDays = validityOption.durationInDays;
-            }
+          if (course && course.validity) {
+            validityLabels.push(course.validity);
           }
         } else if (item.itemType === 'test_series') {
           const TestSeries = mongoose.model('TestSeries');
           const testSeries = await TestSeries.findById(item.itemId);
           if (testSeries && testSeries.validity) {
-            const validityOption = await mongoose.model('ValidityOption').findById(testSeries.validity);
-            if (validityOption && validityOption.durationInDays) {
-              validityInDays = validityOption.durationInDays;
-            }
+            validityLabels.push(testSeries.validity);
+          }
+        } else if (item.itemType === 'publication') {
+          const Publication = mongoose.model('Publication');
+          const publication = await Publication.findById(item.itemId);
+          if (publication && publication.validity) {
+            validityLabels.push(publication.validity);
           }
         }
-        
-        // Use the maximum validity period among all items
-        maxValidityInDays = Math.max(maxValidityInDays, validityInDays);
       }
       
-      // Set expiry date based on validity in days
-      const newExpiryDate = new Date();
-      newExpiryDate.setDate(newExpiryDate.getDate() + maxValidityInDays);
+      // Calculate expiry date using the utility function
+      const newExpiryDate = getMaxExpiryDate(validityLabels);
       purchase.expiryDate = newExpiryDate;
       
       await purchase.save();
@@ -267,14 +250,16 @@ static async getApplicableCoupons(items, userId) {
       user: userId,
       'items.itemType': itemType,
       'items.itemId': itemId,
-      status: 'completed',
-      $or: [
-        { expiryDate: { $exists: false } },
-        { expiryDate: { $gt: new Date() } }
-      ]
+      status: 'completed'
     });
 
-    return !!purchase;
+    if (!purchase) {
+      return false;
+    }
+
+    // Use the expiry utility to check validity
+    const { isPurchaseValid } = require('../src/utils/expiryUtils');
+    return isPurchaseValid(purchase.expiryDate);
   }
 }
 

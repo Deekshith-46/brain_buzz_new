@@ -182,8 +182,9 @@ const testSeriesSchema = new Schema(
       ref: 'Language',
     }],
     validity: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'ValidityOption',
+      type: String,
+      enum: require('../../constants/validityMap').VALIDITY_LABELS,
+      required: true
     },
     noOfTests: {
       type: Number,

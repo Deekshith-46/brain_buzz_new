@@ -3,6 +3,7 @@ const Category = require('../../models/Course/Category');
 const SubCategory = require('../../models/Course/SubCategory');
 const Language = require('../../models/Course/Language');
 const cloudinary = require('../../config/cloudinary');
+const { VALIDITY_LABELS } = require('../../constants/validityMap');
 
 // Helper function to escape regex special characters
 const escapeRegex = (s) => s.replace(/[.*+?^${}()|\[\]\\]/g, '\\$&');
@@ -85,13 +86,12 @@ exports.createTestSeries = async (req, res) => {
       language = [language];
     }
 
-    // Parse validity if it's a JSON string
-    if (typeof validity === 'string') {
-      try {
-        validity = JSON.parse(validity);
-      } catch (e) {
-        // Keep as is if parsing fails
-      }
+    // Validate validity enum
+    if (validity && !VALIDITY_LABELS.includes(validity)) {
+      return res.status(400).json({ 
+        success: false,
+        message: `Invalid validity. Must be one of: ${VALIDITY_LABELS.join(', ')}` 
+      });
     }
 
     if (!name) {
@@ -203,7 +203,7 @@ exports.getFullTestSeries = async (req, res) => {
       .populate('categories', 'name slug')
       .populate('subCategories', 'name slug')
       .populate('languages', 'name code')
-      .populate('validity', 'label durationInDays');
+      // validity is now a string enum, no populate needed
 
     if (!series) {
       return res.status(404).json({ message: 'Test Series not found' });
@@ -278,7 +278,7 @@ exports.getTestSeriesList = async (req, res) => {
       .populate('categories', 'name slug')
       .populate('subCategories', 'name slug')
       .populate('languages', 'name code')
-      .populate('validity', 'label durationInDays');
+      // validity is now a string enum, no populate needed
 
     console.log(`Admin - Found ${seriesList.length} test series`);
 
@@ -306,7 +306,7 @@ exports.getTestSeriesById = async (req, res) => {
       .populate('categories', 'name slug')
       .populate('subCategories', 'name slug')
       .populate('languages', 'name code')
-      .populate('validity', 'label durationInDays');
+      // validity is now a string enum, no populate needed
 
     if (!series) {
       return res.status(404).json({ message: 'Test Series not found' });
@@ -385,13 +385,12 @@ exports.updateTestSeries = async (req, res) => {
       language = [language];
     }
 
-    // Parse validity if provided and it's a JSON string
-    if (validity && typeof validity === 'string') {
-      try {
-        validity = JSON.parse(validity);
-      } catch (e) {
-        // Keep as is if parsing fails
-      }
+    // Validate validity enum if provided
+    if (validity && !VALIDITY_LABELS.includes(validity)) {
+      return res.status(400).json({ 
+        success: false,
+        message: `Invalid validity. Must be one of: ${VALIDITY_LABELS.join(', ')}` 
+      });
     }
 
     const updates = {};
@@ -490,7 +489,7 @@ if (discountType !== undefined) {
       { path: 'categories', select: 'name slug' },
       { path: 'subCategories', select: 'name slug' },
       { path: 'languages', select: 'name code' },
-      { path: 'validity', select: 'label durationInDays' }
+      // validity is now a string enum, no populate needed
     ]);
 
     if (!series) {
