@@ -4,7 +4,7 @@ const mongoose = require('mongoose');
 const purchaseItemSchema = new mongoose.Schema({
   itemType: {
     type: String,
-    enum: ['test_series', 'online_course'],
+    enum: ['test_series', 'online_course', 'publication'],
     required: true
   },
   itemId: {
@@ -13,8 +13,7 @@ const purchaseItemSchema = new mongoose.Schema({
     refPath: 'items.itemType'
   },
   contentType: {
-    type: String,
-    required: true
+    type: String
   }
 }, { _id: false });
 

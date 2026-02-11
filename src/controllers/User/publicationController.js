@@ -1,5 +1,7 @@
 const Publication = require('../../models/Publication/Publication');
 const { PurchaseService } = require('../../../services');
+const Order = require('../../models/Order/Order');
+const mongoose = require('mongoose');
 
 // Helper function to handle database errors
 const handleDatabaseError = (error) => {
@@ -41,12 +43,35 @@ const handleDatabaseError = (error) => {
 // Helper function to check if user has purchased a publication
 const checkPublicationPurchase = async (userId, publicationId) => {
   if (!userId) return false;
-  try {
-    return await PurchaseService.hasAccess(userId, 'publication', publicationId);
-  } catch (error) {
-    console.error('Error checking publication purchase:', error);
-    return false;
-  }
+
+  // Handle both ObjectId and string formats
+  const pubIdString = publicationId.toString();
+  const pubIdObjectId = typeof publicationId === 'string' 
+    ? mongoose.Types.ObjectId.createFromHexString(publicationId)
+    : publicationId;
+
+  // 1️⃣ Primary check (Purchase – future proof)
+  const hasPurchase = await PurchaseService.hasAccess(
+    userId,
+    'publication',
+    pubIdObjectId
+  );
+
+  if (hasPurchase) return true;
+
+  // 2️⃣ FALLBACK: Order-based validation (PUBLICATIONS ONLY)
+  // Try both string and ObjectId formats for itemId
+  const orderExists = await Order.findOne({
+    user: userId,
+    status: 'completed',
+    'items.itemType': 'publication',
+    $or: [
+      { 'items.itemId': pubIdString },
+      { 'items.itemId': pubIdObjectId }
+    ]
+  }).lean();
+
+  return !!orderExists;
 };
 
 // Helper function to calculate finalPrice from originalPrice and discountPrice
@@ -123,6 +148,9 @@ exports.listPublications = async (req, res) => {
 exports.getPublicationById = async (req, res) => {
   try {
     const { id } = req.params;
+    const userId = req.user?._id;
+    
+    console.log('📚 Publication API called:', { id, userId });
 
     const publication = await Publication.findOne({
       _id: id,
@@ -139,12 +167,13 @@ exports.getPublicationById = async (req, res) => {
     }
 
     const hasPurchased = await checkPublicationPurchase(req.user?._id, publication._id);
+    console.log('💰 Purchase check result:', { userId, publicationId: publication._id, hasPurchased });
     const publicationObj = publication.toObject();
     
     // Calculate finalPrice
     const finalPrice = calculateFinalPrice(publicationObj.originalPrice, publicationObj.discountPrice);
     
-    // Return only the requested fields (security: NEVER expose bookFileUrl directly)
+    // Return only the requested fields
     const filteredPublication = {
       _id: publicationObj._id,
       name: publicationObj.name,
@@ -164,10 +193,14 @@ exports.getPublicationById = async (req, res) => {
       detailedDescription: publicationObj.detailedDescription,
       authors: publicationObj.authors,
       galleryImages: publicationObj.galleryImages,
-      // ✅ NEW: Access control fields instead of direct URL
+      // ✅ NEW: Access control fields
       isPreviewEnabled: publicationObj.isPreviewEnabled,
       previewPages: publicationObj.previewPages,
       canDownload: hasPurchased && publicationObj.availableIn !== 'HARDCOPY',
+      // ✅ ADD bookFileUrl for purchased users
+      ...(hasPurchased && publicationObj.bookFileUrl && {
+        bookFileUrl: publicationObj.bookFileUrl
+      }),
       isActive: publicationObj.isActive,
       createdAt: publicationObj.createdAt,
       updatedAt: publicationObj.updatedAt
