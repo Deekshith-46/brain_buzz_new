@@ -151,41 +151,45 @@ const testSeriesSchema = new Schema(
       type: String,
       trim: true,
     },
-    originalPrice: {
-    type: Number,
-    required: true,
-    default: 0,
-    min: 0
-  },
-  finalPrice: {
-    type: Number,
-    default: 0
-  },
-  discount: {
-    type: {
-      type: String,
-      enum: ['percentage', 'fixed', null],
-      default: null
-    },
-    value: {
-      type: Number,
-      min: 0,
-      default: 0
-    },
-    validUntil: {
-      type: Date,
-      default: null
-    }
-  },
+
+    
+    // NEW: Validity-based pricing structure
+    validities: [
+      {
+        label: {
+          type: String,
+          enum: require('../../constants/validityMap').VALIDITY_LABELS,
+          required: true
+        },
+        pricing: {
+          originalPrice: {
+            type: Number,
+            required: true,
+            min: 0
+          },
+          discountValue: {
+            type: Number,
+            default: 0,
+            min: 0
+          },
+          discountType: {
+            type: String,
+            enum: ['percentage', 'fixed', null],
+            default: null
+          },
+          finalPrice: {
+            type: Number,
+            required: true,
+            min: 0
+          }
+        }
+      }
+    ],
     languages: [{
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Language',
     }],
-    validity: {
-      type: String,
-      enum: require('../../constants/validityMap').VALIDITY_LABELS,
-      required: true
-    },
+
     noOfTests: {
       type: Number,
       required: true,
@@ -233,21 +237,55 @@ testSeriesSchema.pre('save', async function(next) {
   next();
 });
 
-// Add a pre-save hook to automatically calculate and update finalPrice
+// Add a pre-save hook to automatically calculate final prices for validity options
 testSeriesSchema.pre('save', function(next) {
-  // Calculate finalPrice based on originalPrice and discount
-  const basePrice = this.originalPrice || 0;
-  let finalPrice = basePrice;
-  
-  if (this.discount?.type === "percentage") {
-    finalPrice = basePrice - (basePrice * this.discount.value) / 100;
+  // Calculate final prices for each validity option
+  if (this.validities && this.validities.length > 0) {
+    this.validities.forEach(validityOption => {
+      const base = validityOption.pricing.originalPrice || 0;
+      const discountValue = validityOption.pricing.discountValue || 0;
+      const discountType = validityOption.pricing.discountType || 'fixed';
+      
+      let finalPrice;
+      if (discountType === 'percentage') {
+        const calculatedDiscount = (base * discountValue) / 100;
+        finalPrice = base - calculatedDiscount;
+      } else {
+        // fixed discount type
+        finalPrice = base - discountValue;
+      }
+      
+      validityOption.pricing.finalPrice = Math.max(Math.round(finalPrice * 100) / 100, 0);
+    });
   }
   
-  if (this.discount?.type === "fixed") {
-    finalPrice = basePrice - this.discount.value;
+  next();
+});
+
+// Add a pre-save hook to validate test-level noOfQuestions against total section questions
+testSeriesSchema.pre('save', function(next) {
+  // Validate that total questions in sections don't exceed test's noOfQuestions
+  if (this.tests && this.tests.length > 0) {
+    this.tests.forEach((test, testIndex) => {
+      // Only validate if test has noOfQuestions set
+      if (typeof test.noOfQuestions === 'number' && test.noOfQuestions > 0) {
+        // Calculate total questions across all sections
+        let totalSectionQuestions = 0;
+        if (test.sections && test.sections.length > 0) {
+          totalSectionQuestions = test.sections.reduce((sum, section) => {
+            return sum + (section.questions ? section.questions.length : 0);
+          }, 0);
+        }
+        
+        // If total exceeds test limit, throw error
+        if (totalSectionQuestions > test.noOfQuestions) {
+          const error = new Error(`Test "${test.testName || 'Test-' + (testIndex + 1)}" has ${totalSectionQuestions} questions across all sections, which exceeds the configured noOfQuestions limit of ${test.noOfQuestions}. Please either increase the noOfQuestions limit or remove some questions.`);
+          return next(error);
+        }
+      }
+    });
   }
   
-  this.finalPrice = Math.max(finalPrice, 0);
   next();
 });
 

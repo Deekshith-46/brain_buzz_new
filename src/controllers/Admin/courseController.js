@@ -52,8 +52,11 @@ exports.createCourse = async (req, res) => {
       return res.status(400).json({ message: 'Course name is required' });
     }
 
-    if (!originalPrice && originalPrice !== 0) {
-      return res.status(400).json({ message: 'Original price is required' });
+    // Only require originalPrice if not using validityIds (legacy validity-based pricing)
+    if (!validityIds || validityIds.length === 0) {
+      if (!originalPrice && originalPrice !== 0) {
+        return res.status(400).json({ message: 'Original price is required' });
+      }
     }
 
     // Handle thumbnail upload
@@ -181,11 +184,7 @@ exports.createCourse = async (req, res) => {
       categories: categoryIds,
       subCategories: subCategoryIds,
       languages: languageIds,
-      validity: validityId,
       thumbnailUrl,
-      originalPrice,
-      discountPrice,
-      discountPercent,
       pricingNote,
       shortDescription,
       detailedDescription,
@@ -231,6 +230,7 @@ exports.createFullCourse = async (req, res) => {
     let tutors = [];
     let studyMaterials = [];
     let validity = req.body.validity || '1_YEAR'; // Default to 1 year if not provided
+    let validities = []; // NEW: Array of validity options with pricing
 
     try {
       categoryIds = req.body.categoryIds ? JSON.parse(req.body.categoryIds) : [];
@@ -239,6 +239,7 @@ exports.createFullCourse = async (req, res) => {
       classes = req.body.classes ? JSON.parse(req.body.classes) : [];
       tutors = req.body.tutors ? JSON.parse(req.body.tutors) : [];
       studyMaterials = req.body.studyMaterials ? JSON.parse(req.body.studyMaterials) : [];
+      validities = req.body.validities ? JSON.parse(req.body.validities) : [];
     } catch (parseError) {
       return res.status(400).json({ 
         message: 'Invalid JSON in one of the array fields',
@@ -246,13 +247,94 @@ exports.createFullCourse = async (req, res) => {
       });
     }
 
-    // Validation
+    const { VALIDITY_LABELS } = require('../../constants/validityMap');
+    
+    // Validate single validity (backward compatibility)
+    if (validity && !VALIDITY_LABELS.includes(validity)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid validity. Must be one of: ${VALIDITY_LABELS.join(', ')}`
+      });
+    }
+    
+    // Validate validity-based pricing array
+    let validitiesData = [];
+    if (validities && Array.isArray(validities) && validities.length > 0) {
+      try {
+        // Validate each validity option
+        for (const validityOption of validities) {
+          if (!validityOption.label || !VALIDITY_LABELS.includes(validityOption.label)) {
+            return res.status(400).json({
+              success: false,
+              message: `Invalid validity label: ${validityOption.label}. Must be one of: ${VALIDITY_LABELS.join(', ')}`
+            });
+          }
+          
+          if (!validityOption.pricing || typeof validityOption.pricing.originalPrice !== 'number' || validityOption.pricing.originalPrice < 0) {
+            return res.status(400).json({
+              success: false,
+              message: `Invalid pricing for validity ${validityOption.label}: originalPrice must be a positive number`
+            });
+          }
+          
+          const discountValue = validityOption.pricing.discountValue || 0;
+          const discountType = validityOption.pricing.discountType || 'fixed';
+          
+          if (typeof discountValue !== 'number' || discountValue < 0) {
+            return res.status(400).json({
+              success: false,
+              message: `Invalid pricing for validity ${validityOption.label}: discountValue must be a non-negative number`
+            });
+          }
+          
+          if (discountType === 'percentage' && discountValue > 100) {
+            return res.status(400).json({
+              success: false,
+              message: `Invalid pricing for validity ${validityOption.label}: percentage discount cannot exceed 100%`
+            });
+          }
+          
+          let finalPrice;
+          if (discountType === 'percentage') {
+            const calculatedDiscount = (validityOption.pricing.originalPrice * discountValue) / 100;
+            finalPrice = validityOption.pricing.originalPrice - calculatedDiscount;
+          } else {
+            // fixed discount type
+            if (discountValue > validityOption.pricing.originalPrice) {
+              return res.status(400).json({
+                success: false,
+                message: `Invalid pricing for validity ${validityOption.label}: discountValue cannot exceed originalPrice`
+              });
+            }
+            finalPrice = validityOption.pricing.originalPrice - discountValue;
+          }
+          
+          validitiesData.push({
+            label: validityOption.label,
+            pricing: {
+              originalPrice: validityOption.pricing.originalPrice,
+              discountValue: discountValue,
+              discountType: discountType,
+              finalPrice: Math.round(finalPrice * 100) / 100  // Round to 2 decimal places
+            }
+          });
+        }
+      } catch (error) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid validities format: ${error.message}`
+        });
+      }
+    }
     if (!name) {
       return res.status(400).json({ message: 'Course name is required' });
     }
 
-    if (!originalPrice && originalPrice !== 0) {
-      return res.status(400).json({ message: 'Original price is required' });
+    // Only require originalPrice if not using validity-based pricing
+    if (!validitiesData || validitiesData.length === 0) {
+      if (!originalPrice && originalPrice !== 0) {
+        return res.status(400).json({ message: 'Original price is required' });
+      }
     }
 
     // Handle thumbnail upload
@@ -374,10 +456,8 @@ exports.createFullCourse = async (req, res) => {
       categories: categoryIds,
       subCategories: subCategoryIds,
       languages: languageIds,
-      validity: validity,
+      validities: validitiesData, // NEW: Validity-based pricing
       thumbnailUrl,
-      originalPrice: parseFloat(originalPrice),
-      discountPrice: discountPrice ? parseFloat(discountPrice) : 0,
       pricingNote,
       shortDescription,
       detailedDescription,
@@ -443,10 +523,6 @@ exports.createCourseShell = async (req, res) => {
       categories: categoryIds,
       subCategories: subCategoryIds,
       languages: [],
-      validity: '1_YEAR', // Default validity
-      originalPrice: 0, // placeholder, to be updated in step 2
-      discountPrice: 0,
-      discountPercent: 0,
       shortDescription: '',
       detailedDescription: '',
       tutors: [],
@@ -984,6 +1060,14 @@ exports.getCourseById = async (req, res) => {
 
     // For admin, all classes are accessible
     const courseObj = course.toObject();
+    
+    // Remove deprecated fields from response
+    delete courseObj.originalPrice;
+    delete courseObj.finalPrice;
+    delete courseObj.discountValue;
+    delete courseObj.discountType;
+    delete courseObj.discountPercent;
+    delete courseObj.validity;
     
     // Process classes: Admin has full access to all classes
     courseObj.classes = courseObj.classes.map(cls => ({

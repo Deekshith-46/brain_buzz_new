@@ -7,13 +7,13 @@ const { PurchaseService } = require('../../../services');
 
 // Helper to check if user has access to a test series
 const checkTestSeriesAccess = async (userId, seriesId) => {
-  if (!userId) return false;
+  if (!userId) return { hasAccess: false, isValid: false, expiryDate: null, validity: null };
   
   // Use the unified TestSeriesAccessService
   const { TestSeriesAccessService } = require('../../../services');
   const accessInfo = await TestSeriesAccessService.getAccessInfo(userId, seriesId);
   
-  return accessInfo.hasAccess && accessInfo.isValid;
+  return accessInfo; // Return full access info instead of just boolean
 };
 
 // Helper function to calculate finalPrice from originalPrice and discount
@@ -110,7 +110,7 @@ exports.listPublicTestSeries = async (req, res) => {
     console.log(`Total test series in DB: ${totalCount}, Active/Missing isActive: ${activeCount}, Inactive: ${inactiveCount}`);
     
     const seriesList = await TestSeries.find(filter)
-      .select('name description thumbnail date noOfTests tests categories subCategories isActive languages validity originalPrice discount')
+      .select('name description thumbnail date noOfTests tests categories subCategories isActive languages validities')
       .populate('categories', 'name slug')
       .populate('subCategories', 'name slug')
       .populate('languages', 'name code')
@@ -128,7 +128,30 @@ exports.listPublicTestSeries = async (req, res) => {
 
     // For each series, check if user has access
     const seriesWithAccess = await Promise.all(filteredSeriesList.map(async (series) => {
-      const hasAccess = userRole === 'ADMIN' ? true : (userId ? await checkTestSeriesAccess(userId, series._id) : false);
+      const accessInfo = userRole === 'ADMIN' 
+        ? { hasAccess: true, isValid: true }
+        : userId 
+          ? await checkTestSeriesAccess(userId, series._id)
+          : { hasAccess: false, isValid: false };
+      
+      // Prepare validity-based pricing options
+      let validityOptions = [];
+      if (series.validities && series.validities.length > 0) {
+        validityOptions = series.validities.map(v => ({
+          label: v.label,
+          pricing: v.pricing
+        }));
+      } else {
+        // No legacy pricing fallback - use default values
+        validityOptions = [{
+          label: '1_YEAR',
+          pricing: {
+            originalPrice: 0,
+            discountValue: 0,
+            finalPrice: 0
+          }
+        }];
+      }
       
       return {
         _id: series._id,
@@ -141,9 +164,7 @@ exports.listPublicTestSeries = async (req, res) => {
         categories: series.categories,
         subCategories: series.subCategories,
         languages: series.languages,
-        validity: series.validity,
-        originalPrice: series.originalPrice,
-        discount: series.discount,
+        validityOptions: validityOptions, // NEW: Validity-based pricing options
         hasAccess
       };
     }));
@@ -187,13 +208,19 @@ exports.getPublicTestSeriesById = async (req, res) => {
       });
     }
 
-    const hasAccess = userRole === 'ADMIN' ? true : (userId ? await checkTestSeriesAccess(userId, seriesId) : false);
+    const accessInfo = userRole === 'ADMIN' 
+      ? { hasAccess: true, isValid: true, expiryDate: null, validity: null, daysRemaining: null }
+      : userId 
+        ? await checkTestSeriesAccess(userId, seriesId)
+        : { hasAccess: false, isValid: false, expiryDate: null, validity: null, daysRemaining: null };
 
     // Prepare test list with access control
     const tests = series.tests.map((test, index) => {
       // Use freeQuota from the test series instead of hardcoded position
       const isFree = index < (series.freeQuota || 2);
-      const testHasAccess = userRole === 'ADMIN' || hasAccess || isFree;
+      const testHasAccess = userRole === 'ADMIN' || 
+                           (accessInfo.hasAccess && accessInfo.isValid) || 
+                           isFree;
       
       // Calculate total number of questions from all sections
       let totalQuestions = 0;
@@ -223,8 +250,24 @@ exports.getPublicTestSeriesById = async (req, res) => {
       };
     });
 
-    // Use pre-calculated finalPrice from the model
-    const finalPrice = series.finalPrice ?? calculateFinalPrice(series.originalPrice, series.discount);
+    // Prepare validity-based pricing options
+    let validityOptions = [];
+    if (series.validities && series.validities.length > 0) {
+      validityOptions = series.validities.map(v => ({
+        label: v.label,
+        pricing: v.pricing
+      }));
+    } else {
+      // No legacy pricing fallback - use default values
+      validityOptions = [{
+        label: '1_YEAR',
+        pricing: {
+          originalPrice: 0,
+          discountValue: 0,
+          finalPrice: 0
+        }
+      }];
+    }
     
     return res.status(200).json({
       success: true,
@@ -238,12 +281,13 @@ exports.getPublicTestSeriesById = async (req, res) => {
         categories: series.categories,
         subCategories: series.subCategories,
         languages: series.languages,
-        validity: series.validity,
-        originalPrice: series.originalPrice,
-        discount: series.discount,
-        finalPrice: finalPrice,
+        validityOptions: validityOptions, // NEW: Validity-based pricing options
         tests,
-        hasAccess
+        hasAccess: accessInfo.hasAccess,
+        isPurchaseValid: accessInfo.isValid,
+        expiryDate: accessInfo.expiryDate,
+        validity: accessInfo.validity,
+        daysRemaining: accessInfo.daysRemaining
       }
     });
   } catch (error) {
@@ -552,7 +596,7 @@ exports.listTestSeries = async (req, res) => {
           name: seriesObj.name,
           thumbnailUrl: seriesObj.thumbnail,
           originalPrice: seriesObj.originalPrice,
-          discountPrice: seriesObj.discount?.value || 0,
+          discountValue: seriesObj.discount?.value || 0,
           finalPrice: finalPrice,
           languages: seriesObj.languages,
           validities: seriesObj.validity ? [seriesObj.validity] : [],

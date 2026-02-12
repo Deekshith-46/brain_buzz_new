@@ -64,23 +64,23 @@ const publicationSchema = new mongoose.Schema(
         ref: 'Language',
       },
     ],
-    validity: {
-      type: String,
-      enum: require('../../constants/validityMap').VALIDITY_LABELS,
-      required: true
-    },
     thumbnailUrl: {
       type: String,
       trim: true,
     },
+    // Legacy pricing fields (kept for backward compatibility)
     originalPrice: {
       type: Number,
-      required: true,
       min: 0,
     },
-    discountPrice: {
+    discountValue: {
       type: Number,
       min: 0,
+    },
+    discountType: {
+      type: String,
+      enum: ['percentage', 'fixed'],
+      default: 'fixed'
     },
     discountPercent: {
       type: Number,
@@ -147,10 +147,34 @@ const publicationSchema = new mongoose.Schema(
 
 // Add a pre-save hook to automatically calculate and update finalPrice
 publicationSchema.pre('save', function(next) {
-  // Calculate finalPrice based on originalPrice and discountPrice
-  const basePrice = this.originalPrice || 0;
-  const discountAmount = this.discountPrice || 0;
-  this.finalPrice = Math.max(basePrice - discountAmount, 0);
+  // Calculate finalPrice and discountPercent based on discountType
+  if (this.originalPrice !== undefined) {
+    const basePrice = this.originalPrice || 0;
+    const discountValue = this.discountValue || 0;
+    const discountType = this.discountType || 'fixed'; // Default to fixed if not set
+    
+    if (discountType === 'percentage') {
+      // If discountType is percentage, calculate discount amount from percentage
+      // Cap percentage at 100%
+      const cappedPercentage = Math.min(discountValue, 100);
+      const discountAmount = (basePrice * cappedPercentage) / 100;
+      this.finalPrice = Math.max(basePrice - discountAmount, 0);
+      this.discountPercent = cappedPercentage; // Use capped percentage
+    } else {
+      // If discountType is fixed, treat discountValue as fixed amount
+      // Cap discount amount at original price
+      const cappedDiscount = Math.min(discountValue, basePrice);
+      const discountAmount = cappedDiscount;
+      this.finalPrice = Math.max(basePrice - discountAmount, 0);
+      // Calculate discountPercent based on originalPrice and discount amount
+      if (basePrice > 0 && discountAmount !== undefined) {
+        this.discountPercent = ((discountAmount / basePrice) * 100);
+      } else {
+        this.discountPercent = 0;
+      }
+    }
+  }
+  
   next();
 });
 

@@ -16,7 +16,7 @@ const { resolveCoupon: resolveCouponUtil, calculateCouponDiscount } = require('.
 // Initialize Razorpay
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID || "rzp_test_RPLRzNCjuNmGdU",
-  key_secret: process.env.RAZORPAY_KEY_SECRET || "4GFnyum9JNsGTWCHJHYTqiA6"
+  key_secret: process.env.RAZORPAY_KEY_SECRET
 });
 
 // Get test series price with coupon
@@ -175,6 +175,33 @@ exports.createOrder = async (req, res) => {
     if (!items && req.body.testSeriesId) {
       items = [{ itemType: 'test_series', itemId: req.body.testSeriesId }];
     }
+    
+    // Validate that items with validity-based pricing include validity selection
+    const { isValidityLabel } = require('../../utils/expiryUtils');
+    for (const item of items) {
+      if ((item.itemType === 'test_series' || item.itemType === 'online_course') && !item.validity) {
+        return res.status(400).json({ 
+          success: false, 
+          message: `Validity selection required for ${item.itemType}` 
+        });
+      }
+      
+      // Early validation of validity enum values
+      if (item.validity && !isValidityLabel(item.validity)) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid validity selected: ${item.validity}. Must be one of: ${require('../../constants/validityMap').VALIDITY_LABELS.join(', ')}`
+        });
+      }
+      
+      // Publications should not have validity selections
+      if (item.itemType === 'publication' && item.validity) {
+        return res.status(400).json({
+          success: false,
+          message: 'Publications do not support validity selections - they provide permanent access'
+        });
+      }
+    }
 
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ success: false, message: 'items must be a non-empty array' });
@@ -304,7 +331,7 @@ exports.verifyPayment = async (req, res) => {
     // Verify signature
     const text = `${razorpay_order_id}|${razorpay_payment_id}`;
     const generatedSignature = crypto
-      .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET || "4GFnyum9JNsGTWCHJHYTqiA6")
+      .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
       .update(text)
       .digest('hex');
 
@@ -351,13 +378,21 @@ exports.verifyPayment = async (req, res) => {
     for (const item of items) {
       const originalPrice = await getOriginalPrice(item);
       const finalPrice = await getFinalPrice(item);
-      orderItems.push({
+      
+      const orderItem = {
         itemType: mapOrderItemType(item.itemType),
         itemId: item.itemId,
         price: finalPrice,         // ✅ REQUIRED FIELD for Order schema (after product discounts)
         originalPrice,             // Original price before any discounts
         finalPrice,                // Final price after product discounts (before coupon)
-      });
+      };
+      
+      // Only add validity for subscription-based items (not publications)
+      if (item.itemType !== 'publication' && item.validity) {
+        orderItem.validity = item.validity;
+      }
+      
+      orderItems.push(orderItem);
     }
 
     const savedOrder = await Order.create({
@@ -391,25 +426,27 @@ exports.verifyPayment = async (req, res) => {
     });
 
     // Grant access per item
-    // Calculate expiry date based on validity duration from the course/test series
+    // Calculate expiry PER ITEM to handle different validities correctly
+    const { computePurchaseExpiry } = require('../../utils/expiryUtils');
+    const purchaseDate = new Date();
+    
     for (const it of items) {
-      // Fetch the validity duration from the course or test series
-      let validityDurationInDays = 365; // Default to 1 year if no validity found
+      let pricingDetails = null; // Declare once per loop iteration
       
       if (it.itemType === 'test_series') {
         const testSeries = await TestSeries.findById(it.itemId);
-        const { calculateExpiryDate } = require('../../utils/expiryUtils');
-        let expiryDate = null;
-        
-        if (testSeries && testSeries.validity) {
-          expiryDate = calculateExpiryDate(testSeries.validity);
-        } else {
-          // Default to 1 year if no validity found
-          expiryDate = calculateExpiryDate('1_YEAR');
+        if (it.validity && testSeries?.validities && testSeries.validities.length > 0) {
+          const validityOption = testSeries.validities.find(v => v.label === it.validity);
+          if (validityOption) {
+            pricingDetails = validityOption.pricing;
+          }
         }
         
+        // Calculate expiry for this specific item
+        const itemExpiryDate = computePurchaseExpiry([it], purchaseDate);
+        
         // Debug logging
-        console.log(`Test Series Purchase - Item ID: ${it.itemId}, Validity: ${testSeries?.validity || '1_YEAR'}, Expiry: ${expiryDate}`);
+        console.log(`Test Series Purchase - Item ID: ${it.itemId}, Validity: ${it.validity || '1_YEAR'}, Expiry: ${itemExpiryDate}`);
         
         await Purchase.updateOne(
           {
@@ -424,11 +461,18 @@ exports.verifyPayment = async (req, res) => {
               finalAmount,
               status: 'completed',
               paymentId: razorpay_payment_id,
-              expiryDate: expiryDate,
+              expiryDate: itemExpiryDate, // Use item-specific expiry
+              'items.$.validity': it.validity, // Store selected validity
+              'items.$.pricing': pricingDetails // Store pricing details
             },
             $setOnInsert: {
               user: userId,
-              items: [{ itemType: 'test_series', itemId: it.itemId }],
+              items: [{ 
+                itemType: 'test_series', 
+                itemId: it.itemId,
+                validity: it.validity, // Store selected validity
+                pricing: pricingDetails // Store pricing details
+              }],
               coupon: coupon
                 ? {
                   code: coupon.code,
@@ -443,18 +487,18 @@ exports.verifyPayment = async (req, res) => {
         );
       } else if (it.itemType === 'online_course') {
         const course = await Course.findById(it.itemId);
-        const { calculateExpiryDate } = require('../../utils/expiryUtils');
-        let expiryDate = null;
-        
-        if (course && course.validity) {
-          expiryDate = calculateExpiryDate(course.validity);
-        } else {
-          // Default to 1 year if no validity found
-          expiryDate = calculateExpiryDate('1_YEAR');
+        if (it.validity && course?.validities && course.validities.length > 0) {
+          const validityOption = course.validities.find(v => v.label === it.validity);
+          if (validityOption) {
+            pricingDetails = validityOption.pricing;
+          }
         }
         
+        // Calculate expiry for this specific item
+        const itemExpiryDate = computePurchaseExpiry([it], purchaseDate);
+        
         // Debug logging
-        console.log(`Course Purchase - Item ID: ${it.itemId}, Validity: ${course?.validity || '1_YEAR'}, Expiry: ${expiryDate}`);
+        console.log(`Course Purchase - Item ID: ${it.itemId}, Validity: ${it.validity || '1_YEAR'}, Expiry: ${itemExpiryDate}`);
         
         await Purchase.updateOne(
           {
@@ -469,11 +513,18 @@ exports.verifyPayment = async (req, res) => {
               finalAmount,
               status: 'completed',
               paymentId: razorpay_payment_id,
-              expiryDate: expiryDate,
+              expiryDate: itemExpiryDate, // Use item-specific expiry
+              'items.$.validity': it.validity, // Store selected validity
+              'items.$.pricing': pricingDetails // Store pricing details
             },
             $setOnInsert: {
               user: userId,
-              items: [{ itemType: 'online_course', itemId: it.itemId }],
+              items: [{ 
+                itemType: 'online_course', 
+                itemId: it.itemId,
+                validity: it.validity, // Store selected validity
+                pricing: pricingDetails // Store pricing details
+              }],
               coupon: coupon
                 ? {
                   code: coupon.code,
@@ -488,18 +539,11 @@ exports.verifyPayment = async (req, res) => {
         );
       } else if (it.itemType === 'publication') {
         const publication = await Publication.findById(it.itemId);
-        const { calculateExpiryDate } = require('../../utils/expiryUtils');
-        let expiryDate = null;
-        
-        if (publication && publication.validity) {
-          expiryDate = calculateExpiryDate(publication.validity);
-        } else {
-          // Default to 1 year if no validity found
-          expiryDate = calculateExpiryDate('1_YEAR');
-        }
+        // Publications don't use validity-based expiry, but we still calculate for consistency
+        // pricingDetails remains null for publications
         
         // Debug logging
-        console.log(`Publication Purchase - Item ID: ${it.itemId}, Validity: ${publication?.validity || '1_YEAR'}, Expiry: ${expiryDate}`);
+        console.log(`Publication Purchase - Item ID: ${it.itemId}, Validity: ${publication?.validity || '1_YEAR'}, Expiry: null (permanent access)`);
         
         // Grant access to publication
         await Purchase.updateOne(
@@ -515,7 +559,7 @@ exports.verifyPayment = async (req, res) => {
               finalAmount,
               status: 'completed',
               paymentId: razorpay_payment_id,
-              expiryDate: expiryDate,
+              expiryDate: null, // ✅ Publications never expire
             },
             $setOnInsert: {
               user: userId,
@@ -566,6 +610,30 @@ exports.verifyPayment = async (req, res) => {
       }
     }
 
+    // Get purchase details to include in response
+    const purchaseRecords = await Purchase.find({
+      user: userId,
+      paymentId: razorpay_payment_id,
+      status: 'completed'
+    }).select('items expiryDate');
+    
+    // Extract validity and expiry information for each item
+    const accessInfo = purchaseRecords.map(purchase => ({
+      itemType: purchase.items[0]?.itemType || 'unknown',
+      itemId: purchase.items[0]?.itemId || null,
+      validity: purchase.items[0]?.validity || null,
+      expiryDate: purchase.expiryDate
+    }));
+    
+    // For backward compatibility, provide first item's info
+    let validityInfo = null;
+    let expiryDate = null;
+    
+    if (accessInfo.length > 0) {
+      validityInfo = accessInfo[0].validity;
+      expiryDate = accessInfo[0].expiryDate;
+    }
+    
     res.json({
       success: true,
       message: 'Payment verified successfully',
@@ -577,7 +645,10 @@ exports.verifyPayment = async (req, res) => {
         productDiscount: productDiscountTotal,
         couponDiscount: couponOnlyDiscount,
         discountAmount: discountAmount,
-        currency: 'INR'
+        currency: 'INR',
+        expiryDate: expiryDate,
+        validity: validityInfo,
+        accessInfo: accessInfo
       }
     });
 

@@ -1,6 +1,7 @@
 const TestSeries = require('../src/models/TestSeries/TestSeries');
 const Purchase = require('../src/models/Purchase/Purchase');
 const TestAttempt = require('../src/models/TestSeries/TestAttempt');
+const { validatePurchaseAccess } = require('../src/utils/expiryUtils');
 
 class TestSeriesAccessService {
   /**
@@ -22,23 +23,20 @@ class TestSeriesAccessService {
         user: userId,
         "items.itemId": testSeriesId,
         "items.itemType": "test_series",
-        status: "completed",
-        $or: [
-          { expiryDate: { $exists: false } },
-          { expiryDate: { $gt: new Date() } }
-        ]
+        status: "completed"
       });
 
       if (purchase) {
-        // Check if purchase is valid based on status and expiry
-        const isValid = this.validatePurchase(purchase);
-        const expiryDate = this.calculateExpiryDate(purchase, testSeriesId);
-
+        // Use enhanced validation that properly handles unlimited validity
+        const { validatePurchaseAccess } = require('../src/utils/expiryUtils');
+        const validationResult = validatePurchaseAccess(purchase);
+        
         return {
-          hasAccess: true,
-          isValid,
+          hasAccess: validationResult.hasAccess,
+          isValid: validationResult.isValid,
           purchase,
-          expiryDate
+          expiryDate: purchase.expiryDate,
+          validation: validationResult
         };
       }
 

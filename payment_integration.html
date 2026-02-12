@@ -175,15 +175,15 @@
             <label>Select Product Type:</label>
             <div>
                 <label style="margin-right: 20px;">
-                    <input type="radio" name="productType" value="test_series" onchange="toggleProductIdField()" checked> 
+                    <input type="radio" name="productType" value="test_series" onchange="toggleProductFields()" checked> 
                     Test Series
                 </label>
                 <label style="margin-right: 20px;">
-                    <input type="radio" name="productType" value="online_course" onchange="toggleProductIdField()"> 
+                    <input type="radio" name="productType" value="online_course" onchange="toggleProductFields()"> 
                     Online Course
                 </label>
                 <label>
-                    <input type="radio" name="productType" value="publication" onchange="toggleProductIdField()"> 
+                    <input type="radio" name="productType" value="publication" onchange="toggleProductFields()"> 
                     Publication
                 </label>
             </div>
@@ -193,6 +193,15 @@
             <label for="productId">Product ID:</label>
             <input type="text" id="productId" placeholder="Enter product ID">
             <small>Enter the ID of the Test Series or Online Course you want to purchase</small>
+        </div>
+
+        <!-- Validity Selection (shown only for Test Series and Online Courses) -->
+        <div class="form-group hidden" id="validityGroup">
+            <label for="validity">Select Validity Period:</label>
+            <select id="validity">
+                <option value="">-- Loading validities... --</option>
+            </select>
+            <small>Select how long you want access to this content</small>
         </div>
 
         <div class="form-group">
@@ -249,6 +258,10 @@
         <button onclick="showProductInfo()" class="btn-warning">Show Product Info</button>
         
         <div id="productInfo" class="product-info hidden"></div>
+        <div id="validityInfo" class="product-info hidden">
+            <h3>Access Information</h3>
+            <div id="validityDetails"></div>
+        </div>
         <div id="orderResult" class="result-container"></div>
     </div>
 
@@ -277,6 +290,7 @@
     <script>
         let token = localStorage.getItem('jwtToken') || '';
         let apiBaseUrl = localStorage.getItem('apiBaseUrl') || 'http://localhost:3000';
+        let validityOptions = []; // Cache validity options
         
         // Safety guard: remove /api/v1 if it's incorrectly appended to base URL
         if (apiBaseUrl.endsWith('/api/v1')) {
@@ -290,6 +304,9 @@
 
         // Initialize the page
         document.addEventListener('DOMContentLoaded', function() {
+            // Force initial UI sync
+            toggleProductFields();
+            
             // Load saved token if exists
             if (token) {
                 document.getElementById('jwtToken').value = token;
@@ -349,10 +366,11 @@
             }, 3000);
         }
 
-        // Toggle product ID field based on selection
-        function toggleProductIdField() {
+        // Toggle product fields based on selection
+        function toggleProductFields() {
             const productType = document.querySelector('input[name="productType"]:checked').value;
             const productIdLabel = document.querySelector('#productIdGroup label');
+            const validityGroup = document.getElementById('validityGroup');
             
             // Update label based on product type
             if (productType === 'test_series') {
@@ -361,6 +379,14 @@
                 productIdLabel.textContent = 'Course ID:';
             } else {
                 productIdLabel.textContent = 'Publication ID:';
+            }
+            
+            // Show/hide validity selection (only for Test Series and Online Courses)
+            if (productType === 'test_series' || productType === 'online_course') {
+                validityGroup.classList.remove('hidden');
+            } else {
+                validityGroup.classList.add('hidden');
+                document.getElementById('validity').value = ''; // Reset validity selection
             }
             
             // Update coupon info based on product type
@@ -398,9 +424,16 @@
             const productType = document.querySelector('input[name="productType"]:checked').value;
             const productId = document.getElementById('productId').value.trim();
             const couponCode = document.getElementById('couponCode').value.trim();
+            const validity = document.getElementById('validity').value;
 
             if (!productId) {
                 showResult('Please enter a product ID', 'error', 'orderResult');
+                return;
+            }
+
+            // Validate validity selection for Test Series and Online Courses
+            if ((productType === 'test_series' || productType === 'online_course') && !validity) {
+                showResult('Please select a validity period for this product', 'error', 'orderResult');
                 return;
             }
 
@@ -436,7 +469,9 @@
                 const items = [{
                     itemType: normalizedItemType,
                     itemId: productId,
-                    quantity: 1
+                    quantity: 1,
+                    // Only include validity for subscription-based items
+                    ...(normalizedItemType !== 'publication' && { validity: validity })
                 }];
 
                 const payload = {
@@ -456,6 +491,8 @@
 
                 // Add delivery address for HARDCOPY publications only
                 if (productType === 'publication' && currentPublicationAvailability === 'HARDCOPY') {
+                    console.log('HARDCOPY publication detected, validating delivery address...');
+                    
                     // Get all delivery address fields
                     const fullName = document.getElementById('fullName').value.trim();
                     const phone = document.getElementById('phone').value.trim();
@@ -464,13 +501,19 @@
                     const city = document.getElementById('city').value.trim();
                     const state = document.getElementById('state').value.trim();
                     const pincode = document.getElementById('pincode').value.trim();
-
+                    
+                    console.log('Delivery address fields:', { fullName, phone, email, addressLine, city, state, pincode });
+                    
                     // Validate delivery address fields
                     if (!fullName || !phone || !email || !addressLine || !city || !state || !pincode) {
+                        console.log('Delivery address validation FAILED');
                         showResult('Complete delivery address required for HARDCOPY publications', 'error', 'orderResult');
+                        showLoading(false);
                         return;
                     }
-
+                    
+                    console.log('Delivery address validation PASSED');
+                    
                     // Add delivery address to payload
                     payload.deliveryAddress = {
                         fullName,
@@ -487,6 +530,7 @@
                     payload.couponCode = couponCode;
                 }
 
+                console.log('Final payload being sent:', JSON.stringify(payload, null, 2));
                 console.log('Creating order with payload:', payload);
                 console.log('API Base URL:', apiBaseUrl);
                 console.log('Full API Endpoint:', `${apiBaseUrl}/api/payment/create-order`);
@@ -717,16 +761,47 @@
                         
                         // Store publication availability and show delivery address only for HARDCOPY
                         currentPublicationAvailability = product.availableIn;
+                        console.log('Publication availability set to:', currentPublicationAvailability);
+                        
                         const deliverySection = document.getElementById('deliveryAddressSection');
                         if (product.availableIn === 'HARDCOPY') {
+                            console.log('Showing delivery address section for HARDCOPY');
                             deliverySection.classList.remove('hidden');
                         } else {
+                            console.log('Hiding delivery address section for:', product.availableIn);
                             deliverySection.classList.add('hidden');
                         }
                     }
 
                     document.getElementById('productInfo').innerHTML = infoHtml;
                     document.getElementById('productInfo').classList.remove('hidden');
+                    
+                    // Populate validity dropdown with product-specific options
+                    if (productType === 'test_series' || productType === 'online_course') {
+                        const validitySelect = document.getElementById('validity');
+                        const validityGroup = document.getElementById('validityGroup');
+                        
+                        // RESET
+                        validitySelect.innerHTML = '<option value="">-- Select Validity --</option>';
+                        
+                        // Use backend-provided validityOptions ONLY
+                        if (product.validityOptions && product.validityOptions.length > 0) {
+                            product.validityOptions.forEach(v => {
+                                const opt = document.createElement('option');
+                                opt.value = v.label;
+                                
+                                const pricing = v.pricing;
+                                opt.textContent =
+                                    `${v.label.replace('_', ' ')} - ₹${pricing.finalPrice}`;
+                                
+                                validitySelect.appendChild(opt);
+                            });
+                            
+                            validityGroup.classList.remove('hidden');
+                        } else {
+                            validityGroup.classList.add('hidden');
+                        }
+                    }
                 } else {
                     showResult(`Failed to fetch product info: ${responseData.message || responseData.error || 'Unknown error'}`, 'error', 'productInfo');
                 }
@@ -886,6 +961,14 @@
                             <p>You now have access to your purchased ${currentProduct.type.replace('_', ' ')}. Thank you for your purchase!</p>
                         </div>
                     `;
+                    
+                    // Show validity/access information for courses
+                    if (responseData.data?.accessInfo && responseData.data.accessInfo.length > 0) {
+                        showValidityInfo(responseData.data.accessInfo[0]);
+                    } else if (responseData.data?.expiryDate || responseData.data?.validity) {
+                        // Fallback for older response format
+                        showValidityInfo(responseData.data);
+                    }
                 } else {
                     document.getElementById('verificationSection').classList.remove('hidden');
                     document.getElementById('verificationSection').scrollIntoView({ behavior: 'smooth' });
@@ -917,6 +1000,7 @@
         }
 
         // Utility functions
+
         function showResult(message, type, containerId) {
             const container = document.getElementById(containerId);
             if (type === 'success') {
@@ -925,6 +1009,50 @@
                 container.innerHTML = `<div class="error">${message}</div>`;
             } else {
                 container.innerHTML = message;
+            }
+        }
+        
+        function showValidityInfo(data) {
+            const validityContainer = document.getElementById('validityInfo');
+            const detailsContainer = document.getElementById('validityDetails');
+            
+            let validityHtml = '';
+            
+            // Handle different data structures
+            const expiryDate = data.expiryDate || data.accessInfo?.expiryDate;
+            const validityLabel = data.validity || data.accessInfo?.validity;
+            const hasAccess = data.hasAccess || data.accessInfo?.hasAccess;
+            
+            if (validityLabel === 'UNLIMITED' || !expiryDate) {
+                validityHtml = `
+                    <p><strong>Access Type:</strong> Unlimited</p>
+                    <p><strong>Status:</strong> <span class="success">Active</span></p>
+                    <p>You have permanent access to this course.</p>
+                `;
+            } else if (expiryDate) {
+                const expiry = new Date(expiryDate);
+                const now = new Date();
+                const daysRemaining = Math.ceil((expiry - now) / (1000 * 60 * 60 * 24));
+                const isExpired = daysRemaining <= 0;
+                
+                const status = isExpired ? 
+                    `<span class="error">Expired (${Math.abs(daysRemaining)} days ago)</span>` : 
+                    `<span class="success">Active (${daysRemaining} days remaining)</span>`;
+                
+                validityHtml = `
+                    <p><strong>Access Type:</strong> ${validityLabel || 'Time-bound'}</p>
+                    <p><strong>Expires On:</strong> ${expiry.toDateString()}</p>
+                    <p><strong>Status:</strong> ${status}</p>
+                    ${isExpired ? 
+                      `<div class="warning"><p><strong>⚠️ Access Expired</strong></p><p>Your access has expired. Please renew your subscription to continue learning.</p></div>` : 
+                      `<p>You can access all course materials until the expiry date.</p>`}
+                `;
+            }
+            
+            if (validityHtml) {
+                detailsContainer.innerHTML = validityHtml;
+                validityContainer.classList.remove('hidden');
+                validityContainer.scrollIntoView({ behavior: 'smooth' });
             }
         }
 

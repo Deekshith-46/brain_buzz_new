@@ -34,7 +34,9 @@ const uploadToCloudinary = async (file, folder, resourceType = 'raw') => {
           }
         );
         
-        uploadStream.end(file.buffer);
+        // Convert ArrayBuffer to Buffer if needed
+        const bufferToUpload = Buffer.isBuffer(file.buffer) ? file.buffer : Buffer.from(file.buffer);
+        uploadStream.end(bufferToUpload);
       });
     } else if (file.path) {
       // Disk storage - upload file path
@@ -93,7 +95,10 @@ exports.createPublication = async (req, res) => {
       authors = [],
       isActive,
     } = parsed;
-
+    
+    // Use discountValue if discountPrice is not provided (support both field names)
+    const finalDiscountPrice = discountPrice !== undefined ? discountPrice : parsed.discountValue;
+    
     if (!name) {
       return res.status(400).json({ message: 'Publication name is required' });
     }
@@ -101,12 +106,31 @@ exports.createPublication = async (req, res) => {
     if (!originalPrice && originalPrice !== 0) {
       return res.status(400).json({ message: 'Original price is required' });
     }
-
-    // Calculate discount percent automatically
-    let discountPercent = 0;
-    if (originalPrice > 0 && discountPrice !== undefined) {
-      discountPercent = ((originalPrice - discountPrice) / originalPrice) * 100;
+    
+    // Validate discountValue if provided
+    if (finalDiscountPrice && typeof finalDiscountPrice !== 'number') {
+      return res.status(400).json({ message: 'Discount price must be a number' });
     }
+    
+    // Validate discountType if provided
+    if (parsed.discountType && !['fixed', 'percentage'].includes(parsed.discountType)) {
+      return res.status(400).json({ message: 'Discount type must be either fixed or percentage' });
+    }
+
+    // Calculate discount percent automatically based on discountType
+    let discountPercent = 0;
+    if (originalPrice > 0 && finalDiscountPrice !== undefined) {
+      if (parsed.discountType === 'percentage') {
+        // If discountType is percentage, use the discountValue as percentage
+        discountPercent = finalDiscountPrice;
+      } else {
+        // If discountType is fixed, calculate the percentage
+        discountPercent = (finalDiscountPrice / originalPrice) * 100;
+      }
+    }
+    
+    // Use the discountType from parsed data or default to 'fixed'
+    const discountType = parsed.discountType || 'fixed';
 
     // Thumbnail
     let thumbnailUrl;
@@ -178,8 +202,9 @@ exports.createPublication = async (req, res) => {
       validity: validity && validity !== 'null' && validity !== 'undefined' ? validity : undefined,
       thumbnailUrl,
       originalPrice,
-      discountPrice,
-      discountPercent,
+      discountValue: finalDiscountPrice || 0, // Store discountPrice or discountValue in discountValue field
+      discountType,
+      discountPercent: discountPercent || 0,
       availableIn,
       pricingNote,
       shortDescription,
@@ -239,7 +264,15 @@ exports.getPublicationById = async (req, res) => {
       return res.status(404).json({ message: 'Publication not found' });
     }
 
-    return res.status(200).json({ data: publication });
+    // Remove deprecated fields from response
+    const publicationObj = publication.toObject();
+    delete publicationObj.originalPrice;
+    delete publicationObj.finalPrice;
+    delete publicationObj.discountPrice;
+    delete publicationObj.discountPercent;
+    delete publicationObj.validity;
+    
+    return res.status(200).json({ data: publicationObj });
   } catch (error) {
     console.error('Error fetching publication:', error);
     return res.status(500).json({ message: 'Server error', error: error.message });

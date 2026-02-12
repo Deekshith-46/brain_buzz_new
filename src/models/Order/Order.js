@@ -6,7 +6,7 @@ const Schema = mongoose.Schema;
 const orderItemSchema = new Schema({
   itemType: {
     type: String,
-    enum: ['TestSeries', 'Course', 'testSeries', 'course', 'publication'], // Support both old and new formats
+    enum: ['TestSeries', 'Course', 'testSeries', 'course', 'publication', 'test_series', 'online_course'], // Support all formats
     required: true
   },
   itemId: {
@@ -21,6 +21,12 @@ const orderItemSchema = new Schema({
   quantity: {
     type: Number,
     default: 1
+  },
+  validity: {
+    type: String,
+    enum: ['1_MONTH', '2_MONTHS', '3_MONTHS', '4_MONTHS', '5_MONTHS', 
+           '6_MONTHS', '1_YEAR', '2_YEARS', '5_YEARS', 'UNLIMITED'],
+    required: false
   }
 }, { _id: false });
 

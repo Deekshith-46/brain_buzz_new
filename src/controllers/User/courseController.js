@@ -44,12 +44,25 @@ const handleDatabaseError = (error) => {
 // Note: checkCoursePurchase is now imported from middleware and uses centralized access logic
 // The old implementation using PurchaseService.hasAccess was replaced with getCourseAccessContext for better performance
 
-// Helper function to calculate finalPrice from originalPrice and discountPrice
-const calculateFinalPrice = (originalPrice, discountPrice) => {
-  const discountAmount = typeof discountPrice === 'number' && discountPrice >= 0
-    ? discountPrice
-    : 0;
-  return Math.max(0, originalPrice - discountAmount);
+// Helper function to calculate finalPrice from originalPrice and discount
+const calculateFinalPrice = (originalPrice, discountValue, discountType = 'fixed') => {
+  if (typeof originalPrice !== 'number' || originalPrice < 0) {
+    return 0;
+  }
+  
+  if (typeof discountValue !== 'number' || discountValue < 0) {
+    return originalPrice;
+  }
+  
+  if (discountType === 'percentage') {
+    // Cap percentage at 100%
+    const cappedPercentage = Math.min(discountValue, 100);
+    const discountAmount = (originalPrice * cappedPercentage) / 100;
+    return Math.max(0, originalPrice - discountAmount);
+  } else {
+    // fixed discount type
+    return Math.max(0, originalPrice - discountValue);
+  }
 };
 
 // Helper function to process classes based on access
@@ -147,19 +160,36 @@ exports.listCourses = async (req, res) => {
         const isValid = accessContext.isValid;
         const courseObj = course.toObject();
         
-        // Calculate finalPrice
-        const finalPrice = calculateFinalPrice(courseObj.originalPrice, courseObj.discountPrice);
+        // Calculate finalPrice (legacy pricing)
+        const finalPrice = calculateFinalPrice(courseObj.originalPrice, courseObj.discountValue, courseObj.discountType);
+        
+        // Prepare validity-based pricing options
+        let validityOptions = [];
+        if (courseObj.validities && courseObj.validities.length > 0) {
+          validityOptions = courseObj.validities.map(v => ({
+            label: v.label,
+            pricing: v.pricing
+          }));
+        } else {
+          // No legacy pricing fallback - use default values
+          validityOptions = [{
+            label: '1_YEAR',
+            pricing: {
+              originalPrice: 0,
+              discountValue: 0,
+              finalPrice: 0
+            }
+          }];
+        }
         
         // Return only the requested fields
         const filteredCourse = {
           _id: courseObj._id,
           name: courseObj.name,
           thumbnailUrl: courseObj.thumbnailUrl,
-          originalPrice: courseObj.originalPrice,
-          discountPrice: courseObj.discountPrice,
-          finalPrice: finalPrice,
           languages: courseObj.languages,
-          validity: courseObj.validity,
+          validity: courseObj.validity, // Legacy field
+          validityOptions: validityOptions, // NEW: Validity-based pricing options
           hasPurchased: hasPurchased,
           isValid: isValid
         };
@@ -258,9 +288,27 @@ exports.getCourseById = async (req, res) => {
     courseObj.isPurchaseValid = isAdmin ? true : isValid;
     courseObj.expiryDate = isAdmin ? null : accessInfo.expiryDate;
     
-    // Calculate and add finalPrice
+    // Calculate and add finalPrice (legacy pricing)
     if (courseObj.originalPrice !== undefined) {
-      courseObj.finalPrice = calculateFinalPrice(courseObj.originalPrice, courseObj.discountPrice);
+      courseObj.finalPrice = calculateFinalPrice(courseObj.originalPrice, courseObj.discountValue, courseObj.discountType);
+    }
+    
+    // Add validity-based pricing options
+    if (courseObj.validities && courseObj.validities.length > 0) {
+      courseObj.validityOptions = courseObj.validities.map(v => ({
+        label: v.label,
+        pricing: v.pricing
+      }));
+    } else {
+      // No legacy pricing fallback - use default values
+      courseObj.validityOptions = [{
+        label: '1_YEAR',
+        pricing: {
+          originalPrice: 0,
+          discountValue: 0,
+          finalPrice: 0
+        }
+      }];
     }
 
     return res.status(200).json({ data: courseObj });

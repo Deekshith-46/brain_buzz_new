@@ -257,9 +257,10 @@ static async getApplicableCoupons(items, userId) {
       return false;
     }
 
-    // Use the expiry utility to check validity
-    const { isPurchaseValid } = require('../src/utils/expiryUtils');
-    return isPurchaseValid(purchase.expiryDate);
+    // Use enhanced validation that properly handles unlimited validity
+    const { validatePurchaseAccess } = require('../src/utils/expiryUtils');
+    const validationResult = validatePurchaseAccess(purchase);
+    return validationResult.hasAccess;
   }
 }
 

@@ -39,7 +39,8 @@ exports.createTestSeries = async (req, res) => {
       discountValue,
       discountValidUntil,
       language,
-      validity
+      validity,
+      validities = []  // NEW: Array of validity options with pricing
     } = req.body;
 
     // Parse categoryIds if it's a JSON string
@@ -86,12 +87,95 @@ exports.createTestSeries = async (req, res) => {
       language = [language];
     }
 
-    // Validate validity enum
+    // Validate single validity (backward compatibility)
     if (validity && !VALIDITY_LABELS.includes(validity)) {
       return res.status(400).json({ 
         success: false,
         message: `Invalid validity. Must be one of: ${VALIDITY_LABELS.join(', ')}` 
       });
+    }
+    
+    // Validate validity-based pricing array
+    let validitiesData = [];
+    
+    // Parse validities if it's a JSON string (common when sent via form data)
+    if (validities && typeof validities === 'string') {
+      try {
+        validities = JSON.parse(validities);
+      } catch (parseError) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid validities JSON format: ${parseError.message}`
+        });
+      }
+    }
+    
+    if (validities && Array.isArray(validities) && validities.length > 0) {
+      try {
+        // Validate each validity option
+        for (const validityOption of validities) {
+          if (!validityOption.label || !VALIDITY_LABELS.includes(validityOption.label)) {
+            return res.status(400).json({
+              success: false,
+              message: `Invalid validity label: ${validityOption.label}. Must be one of: ${VALIDITY_LABELS.join(', ')}`
+            });
+          }
+          
+          if (!validityOption.pricing || typeof validityOption.pricing.originalPrice !== 'number' || validityOption.pricing.originalPrice < 0) {
+            return res.status(400).json({
+              success: false,
+              message: `Invalid pricing for validity ${validityOption.label}: originalPrice must be a positive number`
+            });
+          }
+          
+          const discountValue = validityOption.pricing.discountValue || 0;
+          const discountType = validityOption.pricing.discountType || 'fixed';
+          
+          if (typeof discountValue !== 'number' || discountValue < 0) {
+            return res.status(400).json({
+              success: false,
+              message: `Invalid pricing for validity ${validityOption.label}: discountValue must be a non-negative number`
+            });
+          }
+          
+          if (discountType === 'percentage' && discountValue > 100) {
+            return res.status(400).json({
+              success: false,
+              message: `Invalid pricing for validity ${validityOption.label}: percentage discount cannot exceed 100%`
+            });
+          }
+          
+          let finalPrice;
+          if (discountType === 'percentage') {
+            const calculatedDiscount = (validityOption.pricing.originalPrice * discountValue) / 100;
+            finalPrice = validityOption.pricing.originalPrice - calculatedDiscount;
+          } else {
+            // fixed discount type
+            if (discountValue > validityOption.pricing.originalPrice) {
+              return res.status(400).json({
+                success: false,
+                message: `Invalid pricing for validity ${validityOption.label}: discountValue cannot exceed originalPrice`
+              });
+            }
+            finalPrice = validityOption.pricing.originalPrice - discountValue;
+          }
+          
+          validitiesData.push({
+            label: validityOption.label,
+            pricing: {
+              originalPrice: validityOption.pricing.originalPrice,
+              discountValue: discountValue,
+              discountType: discountType,
+              finalPrice: Math.round(finalPrice * 100) / 100  // Round to 2 decimal places
+            }
+          });
+        }
+      } catch (error) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid validities format: ${error.message}`
+        });
+      }
     }
 
     if (!name) {
@@ -172,10 +256,8 @@ if (discountType !== undefined && discountType !== '') {
       noOfTests,
       description,
       thumbnail,
-      originalPrice: Number(originalPrice),
-      discount: discountData,
       languages: language && language !== 'null' && language !== 'undefined' ? language : undefined,
-      validity: validity && validity !== 'null' && validity !== 'undefined' ? validity : undefined,
+      validities: validitiesData, // NEW: Validity-based pricing
       accessType: "PAID"
     });
 
@@ -209,7 +291,14 @@ exports.getFullTestSeries = async (req, res) => {
       return res.status(404).json({ message: 'Test Series not found' });
     }
 
-    return res.status(200).json({ data: series });
+    // Remove deprecated fields from response
+    const seriesObj = series.toObject();
+    delete seriesObj.originalPrice;
+    delete seriesObj.finalPrice;
+    delete seriesObj.discount;
+    delete seriesObj.validity;
+    
+    return res.status(200).json({ data: seriesObj });
   } catch (error) {
     console.error('Error fetching full Test Series:', error);
     return res.status(500).json({ message: 'Server error', error: error.message });
@@ -312,8 +401,15 @@ exports.getTestSeriesById = async (req, res) => {
       return res.status(404).json({ message: 'Test Series not found' });
     }
 
+    // Remove deprecated fields from response
+    const seriesObj = series.toObject();
+    delete seriesObj.originalPrice;
+    delete seriesObj.finalPrice;
+    delete seriesObj.discount;
+    delete seriesObj.validity;
+    
     return res.status(200).json({ 
-      data: series 
+      data: seriesObj 
     });
   } catch (error) {
     console.error('Error fetching Test Series:', error);
@@ -805,6 +901,46 @@ exports.addSectionToTest = async (req, res) => {
       return res.status(404).json({ message: 'Test not found in this series' });
     }
 
+    // Validate test-level noOfQuestions constraint BEFORE adding new section
+    if (typeof test.noOfQuestions === 'number' && test.noOfQuestions > 0) {
+      // Calculate current total of section noOfQuestions limits (not actual questions)
+      const currentTotalSectionLimits = test.sections.reduce((sum, section) => {
+        return sum + (section.noOfQuestions || 0);
+      }, 0);
+
+      // If noOfQuestions is specified for new section, validate it
+      if (typeof noOfQuestions === 'number' && noOfQuestions > 0) {
+        const remainingQuestions = test.noOfQuestions - currentTotalSectionLimits;
+        
+        if (noOfQuestions > remainingQuestions) {
+          return res.status(400).json({
+            message: `Cannot create section: This would exceed the test's noOfQuestions limit.`,
+            details: {
+              testNoOfQuestions: test.noOfQuestions,
+              currentTotalSectionLimits: currentTotalSectionLimits,
+              remainingQuestions: remainingQuestions,
+              requestedSectionQuestions: noOfQuestions,
+              maxAllowedForSection: remainingQuestions,
+              solution: `Either reduce section noOfQuestions to ${remainingQuestions} or below, or increase the test's noOfQuestions limit.`
+            }
+          });
+        }
+      }
+      // If noOfQuestions is not specified for new section, 
+      // check if we can still add the section (0 questions initially)
+      else if (currentTotalSectionLimits >= test.noOfQuestions) {
+        return res.status(400).json({
+          message: `Cannot create section: Test has already reached its noOfQuestions limit.`,
+          details: {
+            testNoOfQuestions: test.noOfQuestions,
+            currentTotalSectionLimits: currentTotalSectionLimits,
+            remainingQuestions: 0,
+            solution: `Increase the test's noOfQuestions limit to add more sections.`
+          }
+        });
+      }
+    }
+
     const newSection = {
       title,
       order,
@@ -845,6 +981,39 @@ exports.updateSectionInTest = async (req, res) => {
       return res.status(404).json({ message: 'Section not found in this test' });
     }
 
+    // Validate test-level noOfQuestions constraint when updating section's noOfQuestions
+    if (updates.noOfQuestions !== undefined && 
+        typeof test.noOfQuestions === 'number' && 
+        test.noOfQuestions > 0) {
+      
+      // Calculate current total of section noOfQuestions limits EXCEPT this one
+      const currentTotalOtherSections = test.sections.reduce((sum, sec) => {
+        if (sec._id.toString() !== sectionId) {
+          return sum + (sec.noOfQuestions || 0);
+        }
+        return sum;
+      }, 0);
+
+      // Add the NEW noOfQuestions value for this section
+      const newTotalQuestions = currentTotalOtherSections + (updates.noOfQuestions || 0);
+      const remainingQuestions = test.noOfQuestions - currentTotalOtherSections;
+
+      if (newTotalQuestions > test.noOfQuestions) {
+        return res.status(400).json({
+          message: `Cannot update section: This would exceed the test's noOfQuestions limit.`,
+          details: {
+            testNoOfQuestions: test.noOfQuestions,
+            currentTotalOtherSections: currentTotalOtherSections,
+            remainingQuestions: remainingQuestions,
+            requestedSectionQuestions: updates.noOfQuestions,
+            currentSectionLimit: section.noOfQuestions || 0,
+            maxAllowedForSection: remainingQuestions,
+            solution: `Either reduce section noOfQuestions to ${remainingQuestions} or below, or increase the test's noOfQuestions limit.`
+          }
+        });
+      }
+    }
+
     Object.keys(updates).forEach((key) => {
       section[key] = updates[key];
     });
@@ -881,7 +1050,8 @@ exports.deleteSectionFromTest = async (req, res) => {
       return res.status(404).json({ message: 'Section not found in this test' });
     }
 
-    section.remove();
+    // Use pull method to remove the section by its ID
+    test.sections.pull(sectionId);
     await series.save();
 
     return res.status(200).json({
@@ -965,6 +1135,32 @@ exports.addQuestionToSection = async (req, res) => {
           noOfQuestions: section.noOfQuestions,
           currentCount,
           incomingCount,
+        },
+      });
+    }
+
+    // ALSO enforce test-level noOfQuestions limit
+    const totalSectionQuestions = test.sections.reduce((sum, sec) => {
+      // For the current section, use the new count after adding questions
+      if (sec._id.toString() === section._id.toString()) {
+        return sum + currentCount + incomingCount;
+      }
+      return sum + (sec.questions ? sec.questions.length : 0);
+    }, 0);
+
+    if (
+      typeof test.noOfQuestions === 'number' &&
+      test.noOfQuestions > 0 &&
+      totalSectionQuestions > test.noOfQuestions
+    ) {
+      return res.status(400).json({
+        message:
+          'Cannot add questions: total questions across all sections would exceed the test-level noOfQuestions limit.',
+        details: {
+          testNoOfQuestions: test.noOfQuestions,
+          currentTotalQuestions: totalSectionQuestions - incomingCount,
+          incomingCount,
+          wouldBeTotal: totalSectionQuestions
         },
       });
     }

@@ -74,12 +74,29 @@ const checkPublicationPurchase = async (userId, publicationId) => {
   return !!orderExists;
 };
 
-// Helper function to calculate finalPrice from originalPrice and discountPrice
-const calculateFinalPrice = (originalPrice, discountPrice) => {
-  const discountAmount = typeof discountPrice === 'number' && discountPrice >= 0
-    ? discountPrice
-    : 0;
-  return Math.max(0, originalPrice - discountAmount);
+// Helper function to calculate finalPrice from originalPrice and discount
+const calculateFinalPrice = (originalPrice, discountValue, discountType = 'fixed') => {
+  if (typeof originalPrice !== 'number' || originalPrice < 0) {
+    return 0;
+  }
+  
+  if (typeof discountValue !== 'number' || discountValue < 0) {
+    return originalPrice;
+  }
+  
+  // Default to fixed discount if type is invalid
+  const validDiscountType = ['percentage', 'fixed'].includes(discountType) ? discountType : 'fixed';
+  
+  if (validDiscountType === 'percentage') {
+    // Cap percentage at 100%
+    const cappedPercentage = Math.min(discountValue, 100);
+    const discountAmount = (originalPrice * cappedPercentage) / 100;
+    return Math.max(0, originalPrice - discountAmount);
+  } else {
+    // fixed discount type - cap at original price
+    const cappedDiscount = Math.min(discountValue, originalPrice);
+    return Math.max(0, originalPrice - cappedDiscount);
+  }
 };
 
 // Public: list publications with optional filters
@@ -109,8 +126,8 @@ exports.listPublications = async (req, res) => {
         const hasPurchased = await checkPublicationPurchase(userId, publication._id);
         const publicationObj = publication.toObject();
         
-        // Calculate finalPrice
-        const finalPrice = calculateFinalPrice(publicationObj.originalPrice, publicationObj.discountPrice);
+        // Calculate finalPrice using the simple pricing system
+        const finalPrice = calculateFinalPrice(publicationObj.originalPrice, publicationObj.discountValue, publicationObj.discountType);
         
         // Return only the requested fields (security: NEVER expose bookFileUrl directly)
         const filteredPublication = {
@@ -118,7 +135,7 @@ exports.listPublications = async (req, res) => {
           name: publicationObj.name,
           thumbnailUrl: publicationObj.thumbnailUrl,
           originalPrice: publicationObj.originalPrice,
-          discountPrice: publicationObj.discountPrice,
+          discountValue: publicationObj.discountValue,
           finalPrice: finalPrice,
           languages: publicationObj.languages,
           validity: publicationObj.validity,
@@ -170,8 +187,8 @@ exports.getPublicationById = async (req, res) => {
     console.log('💰 Purchase check result:', { userId, publicationId: publication._id, hasPurchased });
     const publicationObj = publication.toObject();
     
-    // Calculate finalPrice
-    const finalPrice = calculateFinalPrice(publicationObj.originalPrice, publicationObj.discountPrice);
+    // Calculate finalPrice using the simple pricing system
+    const finalPrice = calculateFinalPrice(publicationObj.originalPrice, publicationObj.discountValue, publicationObj.discountType);
     
     // Return only the requested fields
     const filteredPublication = {
@@ -179,7 +196,7 @@ exports.getPublicationById = async (req, res) => {
       name: publicationObj.name,
       thumbnailUrl: publicationObj.thumbnailUrl,
       originalPrice: publicationObj.originalPrice,
-      discountPrice: publicationObj.discountPrice,
+      discountValue: publicationObj.discountValue,
       finalPrice: finalPrice,
       languages: publicationObj.languages,
       validity: publicationObj.validity,

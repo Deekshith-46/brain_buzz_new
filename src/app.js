@@ -47,6 +47,7 @@ const userCouponRoutes = require('./routes/User/couponRoutes');
 
 const paymentRoutes = require('./routes/User/paymentRoutes');
 const orderRoutes = require('./routes/User/orderRoutes');
+const constantsRoutes = require('./routes/User/constantsRoutes');
 
 // PYQ Routes
 const adminExamRoutes = require('./routes/Admin/examRoutes');
@@ -77,7 +78,8 @@ app.use('/api/admin/ebooks', adminEBookRoutes);
 app.use('/api/admin/daily-quizzes', adminDailyQuizRoutes);
 app.use('/api/admin/current-affairs', adminCurrentAffairsRoutes);
 app.use('/api/admin/current-affairs-categories', adminCurrentAffairsCategoryRoutes);
-// app.use('/api/admin/test-series', adminTestSeriesRoutes);  // OLD - using new admin routes instead
+const adminTestSeriesRoutes = require('./routes/Admin/testSeriesRoutes');
+app.use('/api/admin/test-series', adminTestSeriesRoutes);  // NEW - proper test series routes
 app.use('/api/admin/live-classes', adminLiveClassRoutes);
 app.use('/api/v1/admin/coupons', adminCouponRoutes);
 // And in your route middleware section, add:
@@ -97,6 +99,7 @@ app.use('/api/v1/live-classes', userLiveClassRoutes);
 app.use('/api/v1/coupons', userCouponRoutes);
 app.use('/api/payment', paymentRoutes);
 app.use('/api/orders', orderRoutes);
+app.use('/api/constants', constantsRoutes);
 
 // PYQ Routes
 app.use('/api/admin/exams', adminExamRoutes);
@@ -142,7 +145,7 @@ app.use('/api/admin/test-series/filters', adminTestSeriesFilterRoutes);
 
 // Admin Exam Attempt Routes
 const adminExamAttemptRoutes = require('./routes/Admin/adminRoutes');
-app.use('/api/admin', adminExamAttemptRoutes);
+app.use('/api/admin/exam-attempts', adminExamAttemptRoutes);
 
 // Banner Routes
 const adminBannerRoutes = require('./routes/Admin/bannerRoutes');

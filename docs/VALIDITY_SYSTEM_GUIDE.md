@@ -60,7 +60,7 @@ The system now uses strict enum values instead of custom duration entries. Avail
 }
 ```
 
-### 3. Creating a Publication with Validity
+### 3. Creating a Publication (No Validity)
 
 **POST** `/api/admin/publications`
 
@@ -72,11 +72,13 @@ The system now uses strict enum values instead of custom duration entries. Avail
   "subCategoryIds": ["5f8d0d55b54764421b7156c2"],
   "languageIds": ["5f8d0d55b54764421b7156c3"],
   "originalPrice": 499,
-  "discountPrice": 299,
-  "validity": "2_YEARS",  // ← Use enum value here
+  "discountValue": 200,
+  "discountType": "fixed",
   "availableIn": "DIGITAL"
 }
 ```
+
+> **Note**: Publications provide permanent access and do not support validity-based pricing.
 
 ### 4. Updating Existing Items
 
@@ -207,7 +209,7 @@ validity: "1_MONTH"  // or "2_MONTHS", "3_MONTHS"
 
 ### After (New Schema):
 ```javascript
-// All models now use:
+// Courses and TestSeries use:
 {
   name: String,
   validity: {
@@ -216,6 +218,15 @@ validity: "1_MONTH"  // or "2_MONTHS", "3_MONTHS"
            '6_MONTHS', '1_YEAR', '2_YEARS', '5_YEARS', 'UNLIMITED'],
     required: true
   }
+}
+
+// Publications use simple pricing (no validity):
+{
+  name: String,
+  originalPrice: Number,
+  discountValue: Number,
+  discountType: { type: String, enum: ['fixed', 'percentage'] }
+  // No validity field - provides permanent access
 }
 ```
 
@@ -265,9 +276,10 @@ Error: Invalid validity. Must be one of: 1_MONTH, 2_MONTHS, ...
 - Consider UNLIMITED for practice banks
 
 ### 3. For Publications:
-- Ebooks: 2-5 years typical validity
-- Reference books: Consider UNLIMITED validity
-- Time-sensitive materials: Shorter validity periods
+- Provide permanent access (no expiry)
+- Use simple pricing: originalPrice + discountValue
+- No validity selection needed
+- Perfect for reference materials and ownership-based content
 
 ## Example Workflows
 

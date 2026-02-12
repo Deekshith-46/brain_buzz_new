@@ -128,29 +128,45 @@ const courseSchema = new mongoose.Schema(
         ref: 'Language',
       },
     ],
-    validity: {
-      type: String,
-      enum: require('../../constants/validityMap').VALIDITY_LABELS,
-      required: true
-    },
+    // NEW: Validity-based pricing structure
+    validities: [
+      {
+        label: {
+          type: String,
+          enum: require('../../constants/validityMap').VALIDITY_LABELS,
+          required: true
+        },
+        pricing: {
+          originalPrice: {
+            type: Number,
+            required: true,
+            min: 0
+          },
+          discountValue: {
+            type: Number,
+            default: 0,
+            min: 0
+          },
+          discountType: {
+            type: String,
+            enum: ['percentage', 'fixed', null],
+            default: null
+          },
+          finalPrice: {
+            type: Number,
+            required: true,
+            min: 0
+          }
+        }
+      }
+    ],
     thumbnailUrl: {
       type: String,
       trim: true,
     },
-    originalPrice: {
-      type: Number,
-      required: true,
-      min: 0,
-    },
-    discountPrice: {
-      type: Number,
-      min: 0,
-    },
-    discountPercent: {
-      type: Number,
-      min: 0,
-      max: 100,
-    },
+
+    
+    // NEW: Validity-based pricing structure is defined above with the validity field
     pricingNote: {
       type: String,
       trim: true,
@@ -175,6 +191,31 @@ const courseSchema = new mongoose.Schema(
     timestamps: true,
   }
 );
+
+// Add a pre-save hook to automatically calculate final prices for validity options
+courseSchema.pre('save', function(next) {
+  // Calculate final prices for each validity option
+  if (this.validities && this.validities.length > 0) {
+    this.validities.forEach(validityOption => {
+      const base = validityOption.pricing.originalPrice || 0;
+      const discountValue = validityOption.pricing.discountValue || 0;
+      const discountType = validityOption.pricing.discountType || 'fixed';
+      
+      let finalPrice;
+      if (discountType === 'percentage') {
+        const calculatedDiscount = (base * discountValue) / 100;
+        finalPrice = base - calculatedDiscount;
+      } else {
+        // fixed discount type
+        finalPrice = base - discountValue;
+      }
+      
+      validityOption.pricing.finalPrice = Math.max(Math.round(finalPrice * 100) / 100, 0);
+    });
+  }
+  
+  next();
+});
 
 // Add a pre-save hook to validate categories and subcategories match the content type
 courseSchema.pre('save', async function(next) {

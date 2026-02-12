@@ -1,4 +1,5 @@
 const Purchase = require('../models/Purchase/Purchase');
+const { validatePurchaseAccess } = require('../utils/expiryUtils');
 const Course = require('../models/Course/Course');
 
 /**
@@ -134,17 +135,18 @@ const checkCoursePurchase = async (userId, courseId) => {
       user: userId,
       'items.itemType': 'online_course',
       'items.itemId': courseId,
-      status: 'completed',
-      $or: [
-        { expiryDate: { $exists: false } },
-        { expiryDate: { $gt: new Date() } }
-      ]
+      status: 'completed'
     });
 
+    // Use enhanced validation that properly handles unlimited validity
+    const { validatePurchaseAccess } = require('../utils/expiryUtils');
+    const validationResult = validatePurchaseAccess(purchase);
+
     return {
-      hasPurchase: !!purchase,
-      isValid: !!purchase,
-      purchase: purchase
+      hasPurchase: validationResult.hasAccess,
+      isValid: validationResult.isValid,
+      purchase: purchase,
+      validation: validationResult
     };
   } catch (error) {
     console.error('Error in checkCoursePurchase:', error);
