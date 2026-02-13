@@ -4,6 +4,7 @@ const Purchase = require('../../models/Purchase/Purchase');
 const Course = require('../../models/Course/Course');
 const TestSeries = require('../../models/TestSeries/TestSeries');
 const Publication = require('../../models/Publication/Publication');
+const { PurchaseService } = require('../../../services');
 
 // Create new user (registration via CRUD path)
 exports.createUser = async (req, res) => {
@@ -236,32 +237,71 @@ exports.getAllUserDetails = async (req, res) => {
   }
 };
 
-// Get user's purchased courses
+// Get user's purchased courses (improved version)
 exports.getMyCourses = async (req, res) => {
   try {
     const userId = req.user._id;
     
-    // Find purchases for this user
+    // Find all completed purchases for courses
     const purchases = await Purchase.find({ 
       user: userId,
-      'items.contentType': 'ONLINE_COURSE'
-    }).populate('items.itemId');
+      status: 'completed',
+      'items.itemType': 'online_course'
+    });
     
-    // Extract course IDs
-    const courseIds = purchases.flatMap(purchase => 
-      purchase.items
-        .filter(item => item.contentType === 'ONLINE_COURSE')
-        .map(item => item.itemId)
+    // Extract unique course IDs from purchases
+    const courseIds = [...new Set(
+      purchases.flatMap(purchase => 
+        purchase.items
+          .filter(item => item.itemType === 'online_course' && item.itemId)
+          .map(item => item.itemId.toString())
+      )
+    )];
+    
+    // Get course details with proper population
+    const courses = await Course.find({
+      _id: { $in: courseIds },
+      isActive: true
+    })
+    .populate('categories', 'name slug description thumbnailUrl')
+    .populate('subCategories', 'name slug description thumbnailUrl')
+    .populate('languages', 'name code');
+    
+    // Validate each course and add access information
+    const enrichedCourses = await Promise.all(
+      courses.map(async (course) => {
+        const hasAccess = await PurchaseService.hasAccess(userId, 'online_course', course._id);
+        const purchase = purchases.find(p => 
+          p.items.some(item => 
+            item.itemType === 'online_course' && 
+            item.itemId.toString() === course._id.toString()
+          )
+        );
+        
+        return {
+          ...course.toObject(),
+          hasAccess,
+          isValid: purchase ? new Date() <= purchase.expiryDate : false,
+          expiryDate: purchase ? purchase.expiryDate : null,
+          purchaseDate: purchase ? purchase.purchaseDate : null,
+          purchaseStatus: purchase ? 
+            (new Date() <= purchase.expiryDate ? 'active' : 'expired') : 
+            'not_purchased'
+        };
+      })
     );
     
-    // Get course details
-    const courses = await Course.find({
-      _id: { $in: courseIds }
-    });
+    // Filter to only include courses with valid purchases
+    const purchasedCourses = enrichedCourses.filter(course => course.hasAccess);
     
     res.json({
       success: true,
-      data: courses
+      data: purchasedCourses,
+      summary: {
+        total: purchasedCourses.length,
+        active: purchasedCourses.filter(c => c.isValid).length,
+        expired: purchasedCourses.filter(c => c.hasAccess && !c.isValid).length
+      }
     });
   } catch (error) {
     res.status(500).json({
@@ -272,32 +312,71 @@ exports.getMyCourses = async (req, res) => {
   }
 };
 
-// Get user's purchased test series
+// Get user's purchased test series (improved version)
 exports.getMyTestSeries = async (req, res) => {
   try {
     const userId = req.user._id;
     
-    // Find purchases for this user
+    // Find all completed purchases for test series
     const purchases = await Purchase.find({ 
       user: userId,
-      'items.contentType': 'TEST_SERIES'
-    }).populate('items.itemId');
+      status: 'completed',
+      'items.itemType': 'test_series'
+    });
     
-    // Extract test series IDs
-    const testSeriesIds = purchases.flatMap(purchase => 
-      purchase.items
-        .filter(item => item.contentType === 'TEST_SERIES')
-        .map(item => item.itemId)
+    // Extract unique test series IDs from purchases
+    const testSeriesIds = [...new Set(
+      purchases.flatMap(purchase => 
+        purchase.items
+          .filter(item => item.itemType === 'test_series' && item.itemId)
+          .map(item => item.itemId.toString())
+      )
+    )];
+    
+    // Get test series details with proper population
+    const testSeriesList = await TestSeries.find({
+      _id: { $in: testSeriesIds },
+      isActive: true
+    })
+    .populate('categories', 'name slug description thumbnailUrl')
+    .populate('subCategories', 'name slug description thumbnailUrl')
+    .populate('languages', 'name code');
+    
+    // Validate each test series and add access information
+    const enrichedTestSeries = await Promise.all(
+      testSeriesList.map(async (series) => {
+        const hasAccess = await PurchaseService.hasAccess(userId, 'test_series', series._id);
+        const purchase = purchases.find(p => 
+          p.items.some(item => 
+            item.itemType === 'test_series' && 
+            item.itemId.toString() === series._id.toString()
+          )
+        );
+        
+        return {
+          ...series.toObject(),
+          hasAccess,
+          isValid: purchase ? new Date() <= purchase.expiryDate : false,
+          expiryDate: purchase ? purchase.expiryDate : null,
+          purchaseDate: purchase ? purchase.purchaseDate : null,
+          purchaseStatus: purchase ? 
+            (new Date() <= purchase.expiryDate ? 'active' : 'expired') : 
+            'not_purchased'
+        };
+      })
     );
     
-    // Get test series details
-    const testSeries = await TestSeries.find({
-      _id: { $in: testSeriesIds }
-    });
+    // Filter to only include test series with valid purchases
+    const purchasedTestSeries = enrichedTestSeries.filter(series => series.hasAccess);
     
     res.json({
       success: true,
-      data: testSeries
+      data: purchasedTestSeries,
+      summary: {
+        total: purchasedTestSeries.length,
+        active: purchasedTestSeries.filter(s => s.isValid).length,
+        expired: purchasedTestSeries.filter(s => s.hasAccess && !s.isValid).length
+      }
     });
   } catch (error) {
     res.status(500).json({
@@ -308,32 +387,72 @@ exports.getMyTestSeries = async (req, res) => {
   }
 };
 
-// Get user's purchased publications
+// Get user's purchased publications (improved version)
 exports.getMyPublications = async (req, res) => {
   try {
     const userId = req.user._id;
     
-    // Find purchases for this user
+    // Find all completed purchases for publications
     const purchases = await Purchase.find({ 
       user: userId,
-      'items.contentType': 'PUBLICATION'
-    }).populate('items.itemId');
+      status: 'completed',
+      'items.itemType': 'publication'
+    });
     
-    // Extract publication IDs
-    const publicationIds = purchases.flatMap(purchase => 
-      purchase.items
-        .filter(item => item.contentType === 'PUBLICATION')
-        .map(item => item.itemId)
+    // Extract unique publication IDs from purchases
+    const publicationIds = [...new Set(
+      purchases.flatMap(purchase => 
+        purchase.items
+          .filter(item => item.itemType === 'publication' && item.itemId)
+          .map(item => item.itemId.toString())
+      )
+    )];
+    
+    // Get publication details with proper population
+    const publications = await Publication.find({
+      _id: { $in: publicationIds },
+      isActive: true
+    })
+    .populate('categories', 'name slug description thumbnailUrl')
+    .populate('subCategories', 'name slug description thumbnailUrl')
+    .populate('languages', 'name code');
+    
+    // Validate each publication and add access information
+    const enrichedPublications = await Promise.all(
+      publications.map(async (pub) => {
+        const hasAccess = await PurchaseService.hasAccess(userId, 'publication', pub._id);
+        const purchase = purchases.find(p => 
+          p.items.some(item => 
+            item.itemType === 'publication' && 
+            item.itemId.toString() === pub._id.toString()
+          )
+        );
+        
+        return {
+          ...pub.toObject(),
+          hasAccess,
+          isValid: purchase ? new Date() <= purchase.expiryDate : false,
+          canDownload: hasAccess && pub.availableIn !== 'HARDCOPY',
+          expiryDate: purchase ? purchase.expiryDate : null,
+          purchaseDate: purchase ? purchase.purchaseDate : null,
+          purchaseStatus: purchase ? 
+            (new Date() <= purchase.expiryDate ? 'active' : 'expired') : 
+            'not_purchased'
+        };
+      })
     );
     
-    // Get publication details
-    const publications = await Publication.find({
-      _id: { $in: publicationIds }
-    });
+    // Filter to only include publications with valid purchases
+    const purchasedPublications = enrichedPublications.filter(pub => pub.hasAccess);
     
     res.json({
       success: true,
-      data: publications
+      data: purchasedPublications,
+      summary: {
+        total: purchasedPublications.length,
+        active: purchasedPublications.filter(p => p.isValid).length,
+        expired: purchasedPublications.filter(p => p.hasAccess && !p.isValid).length
+      }
     });
   } catch (error) {
     res.status(500).json({

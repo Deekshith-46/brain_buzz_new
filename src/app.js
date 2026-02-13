@@ -41,6 +41,7 @@ const userTestSeriesRoutes = require('./routes/User/testSeriesRoutes');
 const userTestAttemptRoutes = require('./routes/User/testAttemptRoutes');
 const userLiveClassRoutes = require('./routes/User/liveClassRoutes');
 const adminOrderRoutes = require('./routes/Admin/orderRoutes');
+const userPurchaseRoutes = require('./routes/User/purchaseRoutes');
 
 const adminCouponRoutes = require('./routes/Admin/couponRoutes');
 const userCouponRoutes = require('./routes/User/couponRoutes');
@@ -95,6 +96,7 @@ app.use('/api/v1', currentAffairsRoutes);
 app.use('/api/v1/test-series', userTestSeriesRoutes);
 app.use('/api/v1/test-attempts', userTestAttemptRoutes);
 app.use('/api/v1/live-classes', userLiveClassRoutes);
+app.use('/api/v1/purchases', userPurchaseRoutes);  // NEW - My Purchases API
 // User routes
 app.use('/api/v1/coupons', userCouponRoutes);
 app.use('/api/payment', paymentRoutes);
